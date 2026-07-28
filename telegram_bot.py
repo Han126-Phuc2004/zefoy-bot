@@ -254,8 +254,8 @@ if __name__ == "__main__":
     threading.Thread(target=start_health_check_server, daemon=True).start()
     
     try:
-        bot.remove_webhook(drop_pending_updates=True)
-        print("[+] Webhook cleared & pending updates dropped.")
+        bot.remove_webhook()
+        print("[+] Webhook cleared.")
     except Exception as e:
         print(f"[!] remove_webhook notice: {e}")
 
