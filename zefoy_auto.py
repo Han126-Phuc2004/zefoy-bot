@@ -230,6 +230,57 @@ def ensure_input_filled(driver, video_url):
     except Exception:
         pass
 
+def check_remaining_time(driver):
+    """Kiểm tra chính xác số giây cần chờ (cooldown) trên trang Zefoy."""
+    handle_alerts(driver)
+    try:
+        page_text = driver.find_element(By.TAG_NAME, "body").text
+
+        m1 = re.search(r"Please wait\s*(\d+)\s*minute\(s\)\s*(\d+)\s*second\(s\)", page_text, re.IGNORECASE)
+        if m1:
+            return int(m1.group(1)) * 60 + int(m1.group(2))
+
+        m2 = re.search(r"Please wait\s*(\d+)\s*second\(s\)", page_text, re.IGNORECASE)
+        if m2:
+            return int(m2.group(1))
+
+        m3 = re.search(r"Please wait\s*(\d+)\s*minute\(s\)", page_text, re.IGNORECASE)
+        if m3:
+            return int(m3.group(1)) * 60
+
+        buttons = driver.find_elements(By.TAG_NAME, "button")
+        for b in buttons:
+            if b.is_displayed():
+                txt = b.text.strip()
+                m_btn1 = re.search(r"(\d+)\s*m(?:in)?\s*(\d+)\s*s(?:ec)?", txt, re.IGNORECASE)
+                if m_btn1:
+                    return int(m_btn1.group(1)) * 60 + int(m_btn1.group(2))
+                m_btn2 = re.search(r"(\d{1,2}):(\d{2})", txt)
+                if m_btn2:
+                    return int(m_btn2.group(1)) * 60 + int(m_btn2.group(2))
+                m_btn3 = re.search(r"^(\d+)\s*s(?:ec)?$", txt, re.IGNORECASE)
+                if m_btn3:
+                    return int(m_btn3.group(1))
+    except Exception:
+        pass
+    return 0
+
+def handle_timer_cooldown(seconds):
+    """Hiển thị đồng hồ đếm ngược từng giây trong console."""
+    mins, secs = divmod(seconds, 60)
+    time_fmt = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+    print(f"\n⏱ [Timer Checker] Phát hiện thời gian chờ: {time_fmt} ({seconds} giây)")
+    start_time = time.time()
+    while True:
+        elapsed = int(time.time() - start_time)
+        remaining = seconds - elapsed
+        if remaining <= 0:
+            break
+        m, s = divmod(remaining, 60)
+        print(f"\r⏳ [Đếm ngược Cooldown] Thời gian còn lại: {m:02d}:{s:02d} ({remaining}s)...   ", end="", flush=True)
+        time.sleep(1)
+    print("\n✅ [Timer Checker] Hết thời gian chờ! Đang tự động kiểm tra & Submit lại...\n")
+
 def run_zefoy_bot(video_url=""):
     """Bot chính: tự động tăng views TikTok trên Zefoy."""
     options = webdriver.ChromeOptions()
@@ -312,17 +363,14 @@ def run_zefoy_bot(video_url=""):
                      (re.search(r"^\d[\d,.]*$", txt) and "Search" not in txt):
                     submit_btn = b
 
-            page_text = driver.find_element(By.TAG_NAME, "body").text
-
-            if submit_btn:
+            wait_sec = check_remaining_time(driver)
+            if wait_sec > 0:
+                handle_timer_cooldown(wait_sec)
+            elif submit_btn:
                 count = submit_btn.text.strip()
                 print(f"[+] Submit! Views hiện tại: {count}")
                 submit_btn.click()
                 time.sleep(5)
-            elif "Please wait" in page_text:
-                m = re.search(r"Please wait (\d+) minute\(s\) (\d+) second\(s\)", page_text)
-                if m:
-                    print(f"[*] Chờ: {m.group(1)}m {m.group(2)}s...", end="\r")
             elif search_btn:
                 ensure_input_filled(driver, video_url)
                 print("\n[+] Click Search...")

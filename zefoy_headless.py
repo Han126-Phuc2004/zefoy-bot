@@ -107,6 +107,66 @@ def is_captcha_present(driver):
         pass
     return False
 
+def check_remaining_time(driver):
+    """Kiểm tra chính xác số giây cần chờ (cooldown) trên trang Zefoy."""
+    handle_alerts(driver)
+    try:
+        page_text = driver.find_element(By.TAG_NAME, "body").text
+
+        # 1. Matches: "Please wait 2 minute(s) 15 second(s)"
+        m1 = re.search(r"Please wait\s*(\d+)\s*minute\(s\)\s*(\d+)\s*second\(s\)", page_text, re.IGNORECASE)
+        if m1:
+            return int(m1.group(1)) * 60 + int(m1.group(2))
+
+        # 2. Matches: "Please wait 45 second(s)"
+        m2 = re.search(r"Please wait\s*(\d+)\s*second\(s\)", page_text, re.IGNORECASE)
+        if m2:
+            return int(m2.group(1))
+
+        # 3. Matches: "Please wait 2 minute(s)"
+        m3 = re.search(r"Please wait\s*(\d+)\s*minute\(s\)", page_text, re.IGNORECASE)
+        if m3:
+            return int(m3.group(1)) * 60
+
+        # 4. Matches: button text timers (e.g. 02:15, 2m 15s, 135s)
+        buttons = driver.find_elements(By.TAG_NAME, "button")
+        for b in buttons:
+            if b.is_displayed():
+                txt = b.text.strip()
+                m_btn1 = re.search(r"(\d+)\s*m(?:in)?\s*(\d+)\s*s(?:ec)?", txt, re.IGNORECASE)
+                if m_btn1:
+                    return int(m_btn1.group(1)) * 60 + int(m_btn1.group(2))
+                m_btn2 = re.search(r"(\d{1,2}):(\d{2})", txt)
+                if m_btn2:
+                    return int(m_btn2.group(1)) * 60 + int(m_btn2.group(2))
+                m_btn3 = re.search(r"^(\d+)\s*s(?:ec)?$", txt, re.IGNORECASE)
+                if m_btn3:
+                    return int(m_btn3.group(1))
+    except Exception:
+        pass
+    return 0
+
+def handle_timer_cooldown(seconds, service_name="", send_telegram=False):
+    """Hiển thị đồng hồ đếm ngược từng giây chuyên nghiệp trong console và gửi Telegram."""
+    mins, secs = divmod(seconds, 60)
+    time_fmt = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+    
+    print(f"\n⏱ [Timer Checker] Phát hiện thời gian chờ: {time_fmt} ({seconds} giây)")
+    if send_telegram:
+        send_telegram_notification(f"⏳ *[Zefoy Cooldown]*\n🔹 Dịch vụ: `{service_name}`\n⏱ Cần chờ: *{time_fmt}* ({seconds}s) trước lượt tiếp theo.")
+
+    start_time = time.time()
+    while True:
+        elapsed = int(time.time() - start_time)
+        remaining = seconds - elapsed
+        if remaining <= 0:
+            break
+        m, s = divmod(remaining, 60)
+        print(f"\r⏳ [Đếm ngược Cooldown] Thời gian còn lại: {m:02d}:{s:02d} ({remaining}s)...   ", end="", flush=True)
+        time.sleep(1)
+    
+    print("\n✅ [Timer Checker] Hết thời gian chờ! Đang tự động kiểm tra & Submit lại...\n")
+
 def select_service(driver, service_css, service_name):
     handle_alerts(driver)
     try:
@@ -310,9 +370,10 @@ def run_bot(video_url: str, service: dict):
                          (re.search(r'^\d[\d,.]*$', txt) and "Search" not in txt):
                         submit_btn = b
 
-                page_text = driver.find_element(By.TAG_NAME, "body").text
-
-                if submit_btn:
+                wait_sec = check_remaining_time(driver)
+                if wait_sec > 0:
+                    handle_timer_cooldown(wait_sec, service_name=service_name, send_telegram=True)
+                elif submit_btn:
                     count_text = submit_btn.text.strip()
                     total_submits += 1
                     msg = f"🎉 *[Tăng thành công lần {total_submits}]*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {video_url}\n📊 Số lượng hiển thị: *{count_text}*"
@@ -320,20 +381,13 @@ def run_bot(video_url: str, service: dict):
                     send_telegram_notification(msg)
                     submit_btn.click()
                     time.sleep(5)
-                elif "Please wait" in page_text:
-                    match = re.search(r"Please wait (\d+) minute\(s\) (\d+) second\(s\)", page_text)
-                    if match:
-                        mins, secs = match.group(1), match.group(2)
-                        wait_sec = int(mins)*60 + int(secs)
-                        print(f"[Cycle {cycle}] Chờ: {mins}m {secs}s (sleep {wait_sec}s)")
-                        time.sleep(min(wait_sec, 300))
                 elif search_btn:
                     ensure_input_filled(driver, video_url)
                     print(f"[Cycle {cycle}] Click Search...")
                     search_btn.click()
                     time.sleep(3)
                 else:
-                    time.sleep(10)
+                    time.sleep(5)
 
             except KeyboardInterrupt:
                 print("\n[!] Dừng bot.")
