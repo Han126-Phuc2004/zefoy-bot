@@ -1,3 +1,6 @@
-openai
-python-dotenv
-selenium
+selenium==4.21.0
+webdriver-manager==4.0.2
+openai==1.95.1
+python-dotenv==1.1.1
+requests==2.32.3
+Pillow==10.4.0
