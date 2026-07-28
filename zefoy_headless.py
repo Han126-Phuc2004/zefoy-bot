@@ -1,6 +1,6 @@
 """
 zefoy_headless.py  –  Phiên bản deploy trên Server / GitHub Actions / VPS (không cần màn hình)
-Chạy: python zefoy_headless.py --service 4 --url "https://vt.tiktok.com/xxx"
+Tự động gửi thông báo tiến trình & số lượng View về Telegram!
 """
 
 import os
@@ -8,12 +8,31 @@ import sys
 import time
 import re
 import argparse
+import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from ai_utils import ask_text_to_openrouter
+
+# ─────────────────────────────────────────────────────────────
+#  TELEGRAM NOTIFICATION HELPER
+# ─────────────────────────────────────────────────────────────
+def send_telegram_notification(msg: str):
+    """Gửi thông báo tiến trình & số view trực tiếp về Telegram chat."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            requests.post(url, json={
+                "chat_id": chat_id,
+                "text": msg,
+                "parse_mode": "Markdown"
+            }, timeout=5)
+        except Exception as e:
+            print(f"[!] Lỗi gửi Telegram notification: {e}")
 
 # ─────────────────────────────────────────────────────────────
 #  SERVICE MAP
@@ -198,6 +217,7 @@ def solve_captcha_with_ai(driver, max_retries=5):
             time.sleep(2.5)
             if not is_captcha_present(driver):
                 print("[+] CAPTCHA đã được giải thành công bằng AI!")
+                send_telegram_notification("🧩 *AI đã giải xong CAPTCHA Zefoy!*")
                 return True
             else:
                 print("[-] CAPTCHA vẫn còn, thử lại...")
@@ -219,6 +239,8 @@ def run_bot(video_url: str, service: dict):
     print(f"  ZEFOY HEADLESS BOT  |  Dịch vụ: {service_name}")
     print(f"  URL: {video_url}")
     print(f"{'='*50}\n")
+
+    send_telegram_notification(f"🎬 *Bắt đầu chạy Zefoy Bot*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {video_url}")
 
     driver = create_driver()
     try:
@@ -262,6 +284,7 @@ def run_bot(video_url: str, service: dict):
         print("[+] Bắt đầu vòng lặp tự động...")
 
         cycle = 0
+        total_submits = 0
         while True:
             cycle += 1
             try:
@@ -291,7 +314,10 @@ def run_bot(video_url: str, service: dict):
 
                 if submit_btn:
                     count_text = submit_btn.text.strip()
+                    total_submits += 1
+                    msg = f"🎉 *[Tăng thành công lần {total_submits}]*\n🔹 Dịch vụ: `{service_name}`\n📊 Số lượng hiển thị: *{count_text}*"
                     print(f"[Cycle {cycle}] Submit! Số lượng: {count_text}")
+                    send_telegram_notification(msg)
                     submit_btn.click()
                     time.sleep(5)
                 elif "Please wait" in page_text:
@@ -307,7 +333,6 @@ def run_bot(video_url: str, service: dict):
                     search_btn.click()
                     time.sleep(3)
                 else:
-                    print(f"[Cycle {cycle}] Đợi 10s...")
                     time.sleep(10)
 
             except KeyboardInterrupt:
@@ -317,6 +342,7 @@ def run_bot(video_url: str, service: dict):
                 print(f"[Cycle {cycle}] Lỗi: {e}")
                 time.sleep(5)
     finally:
+        send_telegram_notification("🛑 *Zefoy Bot đã kết thúc tác vụ.*")
         driver.quit()
         print("[+] Đã đóng browser.")
 
