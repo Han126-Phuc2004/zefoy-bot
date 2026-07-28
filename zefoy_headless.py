@@ -24,13 +24,20 @@ def send_telegram_notification(msg: str):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if token and chat_id:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
         try:
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            requests.post(url, json={
+            res = requests.post(url, json={
                 "chat_id": chat_id,
                 "text": msg,
                 "parse_mode": "Markdown"
-            }, timeout=5)
+            }, timeout=8)
+            if res.status_code != 200:
+                # If Telegram rejects markdown formatting, retry as plain text
+                clean_text = re.sub(r'[*_`~]', '', msg)
+                requests.post(url, json={
+                    "chat_id": chat_id,
+                    "text": clean_text
+                }, timeout=8)
         except Exception as e:
             print(f"[!] Lỗi gửi Telegram notification: {e}")
 

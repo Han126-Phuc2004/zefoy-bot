@@ -4,8 +4,12 @@ telegram_bot.py  –  Điều khiển Zefoy Bot chạy trên GitHub Actions ho�
 
 import os
 import sys
+import html
+import re
 import requests
 import telebot
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,63 +31,82 @@ SERVICES = {
     "8": "Repost"
 }
 
+def safe_send_message(chat_id, text, parse_mode="HTML", reply_to_message_id=None):
+    """Gửi tin nhắn Telegram an toàn, tự động fallback về plain text nếu bị lỗi format."""
+    try:
+        return bot.send_message(chat_id, text, parse_mode=parse_mode, reply_to_message_id=reply_to_message_id)
+    except Exception as e:
+        print(f"[!] Send message with parse_mode='{parse_mode}' failed: {e}. Retrying as plain text...")
+        try:
+            clean_text = re.sub(r'<[^>]+>', '', text)
+            return bot.send_message(chat_id, clean_text, parse_mode=None, reply_to_message_id=reply_to_message_id)
+        except Exception as e2:
+            print(f"[❌] Failed to send telegram message: {e2}")
+
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     help_text = """
-🤖 *ZEFOY TELEGRAM BOT CONTROLLER*
+🤖 <b>ZEFOY TELEGRAM BOT CONTROLLER</b>
 
 Gửi link TikTok trực tiếp hoặc chọn lệnh bên dưới:
 
-🔹 `/views <link>` - Tự động tăng Views
-🔹 `/hearts <link>` - Tự động tăng Hearts
-🔹 `/followers <link>` - Tự động tăng Followers
-🔹 `/shares <link>` - Tự động tăng Shares
+🔹 <code>/views &lt;link&gt;</code> - Tự động tăng Views
+🔹 <code>/hearts &lt;link&gt;</code> - Tự động tăng Hearts
+🔹 <code>/followers &lt;link&gt;</code> - Tự động tăng Followers
+🔹 <code>/shares &lt;link&gt;</code> - Tự động tăng Shares
+🔹 <code>/favorites &lt;link&gt;</code> - Tự động tăng Favorites
 
-🛑 `/stop` - HỦY DỪNG tất cả các bot đang cày view trên GitHub!
+🛑 <code>/stop</code> - HỦY DỪNG tất cả các bot đang cày view trên GitHub!
     """
-    bot.reply_to(message, help_text, parse_mode="Markdown")
+    safe_send_message(message.chat.id, help_text, reply_to_message_id=message.message_id)
 
 @bot.message_handler(commands=['stop', 'cancel'])
 def cancel_github_actions(message):
     """Hủy và dừng tất cả các tiến trình đang chạy trên GitHub Actions."""
+    if not GITHUB_PAT:
+        safe_send_message(message.chat.id, "❌ <b>Lỗi:</b> Chưa cấu hình <code>GITHUB_PAT</code> trong <code>.env</code>!", reply_to_message_id=message.message_id)
+        return
+
     headers = {
         "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GITHUB_PAT}" if GITHUB_PAT else "",
+        "Authorization": f"Bearer {GITHUB_PAT}",
         "X-GitHub-Api-Version": "2022-11-28"
     }
     
     try:
-        # Lấy danh sách workflow runs
         url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?per_page=100"
-        res = requests.get(url, headers=headers)
+        res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             runs = res.json().get("workflow_runs", [])
-            # Lọc các workflow đang chạy hoặc đang chờ trong hàng đợi
             active_runs = [r for r in runs if r.get("status") in ["in_progress", "queued", "waiting", "requested"]]
             
             if not active_runs:
-                bot.reply_to(message, "ℹ️ *Hiện không có bot nào đang chạy trên GitHub.*", parse_mode="Markdown")
+                safe_send_message(message.chat.id, "ℹ️ <b>Hiện không có bot nào đang chạy trên GitHub.</b>", reply_to_message_id=message.message_id)
                 return
             
             canceled_count = 0
             for run in active_runs:
                 run_id = run.get("id")
                 cancel_url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs/{run_id}/cancel"
-                cancel_res = requests.post(cancel_url, headers=headers)
+                cancel_res = requests.post(cancel_url, headers=headers, timeout=10)
                 if cancel_res.status_code in [202, 200]:
                     canceled_count += 1
             
-            bot.reply_to(message, f"🛑 *Đã gửi lệnh dừng thành công cho {canceled_count} bot đang chạy trên GitHub!*", parse_mode="Markdown")
+            safe_send_message(message.chat.id, f"🛑 <b>Đã gửi lệnh dừng thành công cho {canceled_count} bot đang chạy trên GitHub!</b>", reply_to_message_id=message.message_id)
         else:
-            bot.reply_to(message, f"❌ *Lỗi kiểm tra GitHub API ({res.status_code})*", parse_mode="Markdown")
+            safe_send_message(message.chat.id, f"❌ <b>Lỗi kiểm tra GitHub API ({res.status_code})</b>\n<code>{html.escape(res.text[:200])}</code>", reply_to_message_id=message.message_id)
     except Exception as e:
-        bot.reply_to(message, f"❌ *Lỗi:* {e}", parse_mode="Markdown")
+        safe_send_message(message.chat.id, f"❌ <b>Lỗi:</b> {html.escape(str(e))}", reply_to_message_id=message.message_id)
 
-def trigger_github_action(chat_id, service_id, tiktok_url):
+def trigger_github_action(chat_id, service_id, tiktok_url, reply_to_msg_id=None):
+    if not GITHUB_PAT:
+        safe_send_message(chat_id, "❌ <b>Lỗi:</b> Chưa cấu hình <code>GITHUB_PAT</code> trong <code>.env</code>!", reply_to_message_id=reply_to_msg_id)
+        return
+
     url = f"https://api.github.com/repos/{GITHUB_REPO}/dispatches"
     headers = {
         "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GITHUB_PAT}" if GITHUB_PAT else "",
+        "Authorization": f"Bearer {GITHUB_PAT}",
         "X-GitHub-Api-Version": "2022-11-28"
     }
     payload = {
@@ -98,24 +121,31 @@ def trigger_github_action(chat_id, service_id, tiktok_url):
     service_name = SERVICES.get(str(service_id), "Views")
     
     try:
-        res = requests.post(url, headers=headers, json=payload)
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
         if res.status_code in [204, 200, 201]:
-            bot.send_message(
+            safe_send_message(
                 chat_id, 
-                f"🚀 *Đã khởi tạo tác vụ trên GitHub Actions!*\n\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Muốn dừng hãy nhắn `/stop`!", 
-                parse_mode="Markdown"
+                f"🚀 <b>Đã khởi tạo tác vụ trên GitHub Actions!</b>\n\n"
+                f"🔹 <b>Dịch vụ:</b> <code>{html.escape(service_name)}</code>\n"
+                f"🔗 <b>Link:</b> {html.escape(tiktok_url)}\n"
+                f"⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Muốn dừng hãy nhắn <code>/stop</code>!",
+                reply_to_message_id=reply_to_msg_id
             )
         else:
-            bot.send_message(
+            safe_send_message(
                 chat_id, 
-                f"❌ *Lỗi kết nối GitHub API (Mã {res.status_code}):*\nKiểm tra lại GITHUB_PAT token.", 
-                parse_mode="Markdown"
+                f"❌ <b>Lỗi kết nối GitHub API (Mã {res.status_code}):</b>\n"
+                f"<code>{html.escape(res.text[:200])}</code>\n"
+                f"Kiểm tra lại GITHUB_PAT token hoặc GITHUB_REPO.", 
+                reply_to_message_id=reply_to_msg_id
             )
     except Exception as e:
-        bot.send_message(chat_id, f"❌ *Lỗi:* {e}", parse_mode="Markdown")
+        safe_send_message(chat_id, f"❌ <b>Lỗi:</b> {html.escape(str(e))}", reply_to_message_id=reply_to_msg_id)
 
 @bot.message_handler(commands=['views', 'hearts', 'followers', 'shares', 'favorites', 'run'])
 def handle_service(message):
+    if not message or not message.text:
+        return
     text_parts = message.text.strip().split(maxsplit=2)
     cmd = text_parts[0].lower()
     
@@ -123,29 +153,28 @@ def handle_service(message):
     
     if cmd == '/run':
         if len(text_parts) < 3:
-            bot.reply_to(message, "⚠️ Cú pháp: `/run <số 1-8> <link_tiktok>`", parse_mode="Markdown")
+            safe_send_message(message.chat.id, "⚠️ Cú pháp: <code>/run &lt;số 1-8&gt; &lt;link_tiktok&gt;</code>", reply_to_message_id=message.message_id)
             return
         service_id = text_parts[1]
         tiktok_url = text_parts[2]
     else:
         if len(text_parts) < 2:
-            bot.reply_to(message, f"⚠️ Vui lòng điền link TikTok!\nVí dụ: `{cmd} https://vt.tiktok.com/ZSxxxxxx/`", parse_mode="Markdown")
+            safe_send_message(message.chat.id, f"⚠️ Vui lòng điền link TikTok!\nVí dụ: <code>{html.escape(cmd)} https://vt.tiktok.com/ZSxxxxxx/</code>", reply_to_message_id=message.message_id)
             return
         service_id = service_map.get(cmd, '4')
         tiktok_url = text_parts[1]
 
-    trigger_github_action(message.chat.id, service_id, tiktok_url)
+    trigger_github_action(message.chat.id, service_id, tiktok_url, reply_to_msg_id=message.message_id)
 
 @bot.message_handler(func=lambda m: True)
 def handle_all_messages(message):
+    if not message or not message.text:
+        return
     txt = message.text.strip()
     if "tiktok.com" in txt.lower() or "http" in txt.lower():
-        trigger_github_action(message.chat.id, "4", txt)
+        trigger_github_action(message.chat.id, "4", txt, reply_to_msg_id=message.message_id)
     else:
-        bot.reply_to(message, "🤖 Gửi link TikTok vào đây để tăng View, gõ `/stop` để dừng bot, hoặc gõ `/help` để xem hướng dẫn!")
-
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+        safe_send_message(message.chat.id, "🤖 Gửi link TikTok vào đây để tăng View, gõ <code>/stop</code> để dừng bot, hoặc gõ <code>/help</code> để xem hướng dẫn!", reply_to_message_id=message.message_id)
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -156,13 +185,27 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
 def start_health_check_server():
     port = int(os.getenv("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-    print(f"[+] Health check server listening on port {port}")
-    server.serve_forever()
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        print(f"[+] Health check server listening on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        print(f"[!] Warning: Health check server stopped: {e}")
 
 if __name__ == "__main__":
+    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "DUMMY_TOKEN":
+        print("[❌] ERROR: TELEGRAM_BOT_TOKEN is missing in .env file!")
+        sys.exit(1)
+
     print("[+] Starting HTTP Health Check thread...")
     threading.Thread(target=start_health_check_server, daemon=True).start()
     
-    print("[+] Starting Telegram Bot Listener...")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    try:
+        bot.remove_webhook(drop_pending_updates=True)
+        print("[+] Webhook cleared & pending updates dropped.")
+    except Exception as e:
+        print(f"[!] remove_webhook notice: {e}")
+
+    print("[+] Starting Telegram Bot Listener (Infinity Polling)...")
+    bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
+
