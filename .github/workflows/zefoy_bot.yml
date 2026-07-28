@@ -17,6 +17,8 @@ on:
         description: 'Chạy bao nhiêu phút? (max 330)'
         required: true
         default: '60'
+  repository_dispatch:
+    types: [telegram_trigger]
 
 jobs:
   run-bot:
@@ -48,8 +50,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          ZEFOY_SERVICE: ${{ github.event.inputs.service || '4' }}
-          ZEFOY_URL: ${{ github.event.inputs.tiktok_url || secrets.ZEFOY_DEFAULT_URL }}
+          ZEFOY_SERVICE: ${{ github.event.inputs.service || github.event.client_payload.service || '4' }}
+          ZEFOY_URL: ${{ github.event.inputs.tiktok_url || github.event.client_payload.tiktok_url || secrets.ZEFOY_DEFAULT_URL }}
           BOT_DURATION: ${{ github.event.inputs.duration_minutes || '60' }}
         run: |
           echo "🚀 Bắt đầu Zefoy Bot..."
