@@ -144,6 +144,25 @@ def handle_all_messages(message):
     else:
         bot.reply_to(message, "🤖 Gửi link TikTok vào đây để tăng View, gõ `/stop` để dừng bot, hoặc gõ `/help` để xem hướng dẫn!")
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"OK - Zefoy Telegram Bot is running")
+
+def start_health_check_server():
+    port = int(os.getenv("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    print(f"[+] Health check server listening on port {port}")
+    server.serve_forever()
+
 if __name__ == "__main__":
+    print("[+] Starting HTTP Health Check thread...")
+    threading.Thread(target=start_health_check_server, daemon=True).start()
+    
     print("[+] Starting Telegram Bot Listener...")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
