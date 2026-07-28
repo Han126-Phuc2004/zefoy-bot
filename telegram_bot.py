@@ -46,7 +46,6 @@ Gửi link TikTok trực tiếp hoặc chọn lệnh bên dưới:
 @bot.message_handler(commands=['stop', 'cancel'])
 def cancel_github_actions(message):
     """Hủy và dừng tất cả các tiến trình đang chạy trên GitHub Actions."""
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?status=in_progress"
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {GITHUB_PAT}" if GITHUB_PAT else "",
@@ -54,15 +53,20 @@ def cancel_github_actions(message):
     }
     
     try:
+        # Lấy danh sách workflow runs
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?per_page=100"
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             runs = res.json().get("workflow_runs", [])
-            if not runs:
+            # Lọc các workflow đang chạy hoặc đang chờ trong hàng đợi
+            active_runs = [r for r in runs if r.get("status") in ["in_progress", "queued", "waiting", "requested"]]
+            
+            if not active_runs:
                 bot.reply_to(message, "ℹ️ *Hiện không có bot nào đang chạy trên GitHub.*", parse_mode="Markdown")
                 return
             
             canceled_count = 0
-            for run in runs:
+            for run in active_runs:
                 run_id = run.get("id")
                 cancel_url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs/{run_id}/cancel"
                 cancel_res = requests.post(cancel_url, headers=headers)
