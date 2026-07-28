@@ -1,5 +1,5 @@
 """
-telegram_bot.py  –  Điều khiển Zefoy Bot chạy trên GitHub Actions hoặc Local qua Telegram
+telegram_bot.py  –  Điều khiển Zefoy Bot chạy trên GitHub Actions hoặc Local qua Telegram PRO
 """
 
 import os
@@ -18,6 +18,9 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 GITHUB_REPO = os.getenv("GITHUB_REPO", "Han126-Phuc2004/zefoy-bot").strip()
 GITHUB_PAT = os.getenv("GITHUB_PAT", os.getenv("GH_PAT", "")).strip()
+
+ALLOWED_USERS_RAW = os.getenv("ALLOWED_USERS", os.getenv("ADMIN_CHAT_ID", "")).strip()
+ALLOWED_USERS = [u.strip() for u in ALLOWED_USERS_RAW.split(",") if u.strip()]
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN if TELEGRAM_TOKEN else "DUMMY_TOKEN")
 
@@ -43,6 +46,12 @@ SERVICE_COMMAND_MAP = {
     '/repost': '8'
 }
 
+def is_user_allowed(user_id: int) -> bool:
+    """Kiểm tra xem người dùng có thuộc danh sách Whitelist/Admin hay không."""
+    if not ALLOWED_USERS:
+        return True
+    return str(user_id) in ALLOWED_USERS
+
 def extract_tiktok_url(text: str) -> str:
     """Trích xuất URL TikTok chính xác từ chuỗi nhập vào."""
     if not text:
@@ -52,6 +61,20 @@ def extract_tiktok_url(text: str) -> str:
         url = match.group(0)
         return url.rstrip('.,;!>')
     return ""
+
+def parse_duration_and_url(text: str) -> tuple[int, str]:
+    """Phân tích thời gian (phút) và TikTok URL từ câu lệnh."""
+    duration = 60
+    url = extract_tiktok_url(text)
+    text_without_url = text.replace(url, "") if url else text
+    num_matches = re.findall(r'\b\d{1,3}\b', text_without_url)
+    if num_matches:
+        for num_str in num_matches:
+            val = int(num_str)
+            if 1 <= val <= 330:
+                duration = val
+                break
+    return duration, url
 
 def safe_send_message(chat_id, text, parse_mode="HTML", reply_to_message_id=None):
     """Gửi tin nhắn Telegram an toàn, tự động fallback về plain text nếu bị lỗi format."""
@@ -65,28 +88,86 @@ def safe_send_message(chat_id, text, parse_mode="HTML", reply_to_message_id=None
         except Exception as e2:
             print(f"[❌] Failed to send telegram message: {e2}")
 
+def trigger_github_action(chat_id, service_id, tiktok_url, duration_minutes=60, reply_to_msg_id=None):
+    if not GITHUB_PAT:
+        safe_send_message(chat_id, "❌ <b>Lỗi:</b> Chưa cấu hình <code>GITHUB_PAT</code> trong <code>.env</code>!", reply_to_message_id=reply_to_msg_id)
+        return False
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/dispatches"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_PAT}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+    payload = {
+        "event_type": "telegram_trigger",
+        "client_payload": {
+            "service": str(service_id),
+            "tiktok_url": tiktok_url,
+            "duration_minutes": str(duration_minutes),
+            "chat_id": str(chat_id)
+        }
+    }
+    
+    service_name = SERVICES.get(str(service_id), "Views")
+    
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        if res.status_code in [204, 200, 201]:
+            safe_send_message(
+                chat_id, 
+                f"🚀 <b>Đã khởi tạo tác vụ trên GitHub Actions!</b>\n\n"
+                f"🔹 <b>Dịch vụ:</b> <code>{html.escape(service_name)}</code>\n"
+                f"⏱ <b>Thời gian cày:</b> <code>{duration_minutes} phút</code>\n"
+                f"🔗 <b>Link:</b> {html.escape(tiktok_url)}\n\n"
+                f"⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Nhắn <code>/stop</code> nếu muốn hủy!",
+                reply_to_message_id=reply_to_msg_id
+            )
+            return True
+        else:
+            safe_send_message(
+                chat_id, 
+                f"❌ <b>Lỗi kết nối GitHub API (Mã {res.status_code}):</b>\n"
+                f"<code>{html.escape(res.text[:200])}</code>\n"
+                f"Kiểm tra lại GITHUB_PAT token hoặc GITHUB_REPO.", 
+                reply_to_message_id=reply_to_msg_id
+            )
+            return False
+    except Exception as e:
+        safe_send_message(chat_id, f"❌ <b>Lỗi:</b> {html.escape(str(e))}", reply_to_message_id=reply_to_msg_id)
+        return False
+
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    print(f"[+] Handling /start or /help from chat_id={message.chat.id}")
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
     help_text = """
-🤖 <b>ZEFOY TELEGRAM BOT CONTROLLER</b>
+🤖 <b>ZEFOY TELEGRAM BOT CONTROLLER PRO</b>
 
-Bạn có thể gửi <b>trực tiếp Link TikTok</b> vào đây hoặc sử dụng các lệnh:
+Bạn có thể gửi <b>trực tiếp Link TikTok</b> hoặc gửi <b>file .txt chứa danh sách link</b> vào đây!
 
-🔹 <code>/view &lt;link&gt;</code> hoặc <code>/views &lt;link&gt;</code> - Tăng Views
-🔹 <code>/heart &lt;link&gt;</code> hoặc <code>/hearts &lt;link&gt;</code> - Tăng Hearts
-🔹 <code>/follower &lt;link&gt;</code> hoặc <code>/followers &lt;link&gt;</code> - Tăng Followers
-🔹 <code>/share &lt;link&gt;</code> hoặc <code>/shares &lt;link&gt;</code> - Tăng Shares
-🔹 <code>/favorite &lt;link&gt;</code> hoặc <code>/favorites &lt;link&gt;</code> - Tăng Favorites
-🔹 <code>/run &lt;1-8&gt; &lt;link&gt;</code> - Tùy chọn dịch vụ (1:Followers, 2:Hearts, 3:CHearts, 4:Views, 5:Shares, 6:Favorites, 7:Live, 8:Repost)
+🔥 <b>CÁC LỆNH CÀY TƯƠNG TÁC:</b>
+🔹 <code>/views [thời_gian_phút] &lt;link&gt;</code> - Tăng Views (Ví dụ: <code>/views 30 https://...</code>)
+🔹 <code>/favorites [thời_gian_phút] &lt;link&gt;</code> - Tăng Yêu thích
+🔹 <code>/combo [thời_gian_phút] &lt;link&gt;</code> - Cày Combo <b>Views + Favorites</b> song song!
+🔹 <code>/batch &lt;link1&gt; &lt;link2&gt; ...</code> - Cày hàng loạt nhiều link
 
-🛑 <code>/stop</code> - HỦY & DỪNG tất cả các bot đang cày view trên GitHub!
+📊 <b>QUẢN LÝ & THỐNG KÊ:</b>
+⚡ <code>/status</code> - Xem danh sách bot đang cày trên GitHub
+📜 <code>/history</code> - Xem lịch sử 10 lần cày gần nhất
+📊 <code>/report</code> - Báo cáo thống kê hiệu suất hôm nay
+🛑 <code>/stop</code> - HỦY & DỪNG tất cả các bot đang cày trên GitHub!
     """
     safe_send_message(message.chat.id, help_text, reply_to_message_id=message.message_id)
 
 @bot.message_handler(commands=['stop', 'cancel'])
 def cancel_github_actions(message):
-    print(f"[+] Handling /stop or /cancel from chat_id={message.chat.id}")
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
     if not GITHUB_PAT:
         safe_send_message(message.chat.id, "❌ <b>Lỗi:</b> Chưa cấu hình <code>GITHUB_PAT</code> trong <code>.env</code>!", reply_to_message_id=message.message_id)
         return
@@ -105,7 +186,7 @@ def cancel_github_actions(message):
             active_runs = [r for r in runs if r.get("status") in ["in_progress", "queued", "waiting", "requested"]]
             
             if not active_runs:
-                safe_send_message(message.chat.id, "ℹ️ <b>Hiện không có bot nào đang chạy trên GitHub.</b>", reply_to_message_id=message.message_id)
+                safe_send_message(message.chat.id, "ℹ️ <b>Hiện không có bot nào đang cày trên GitHub.</b>", reply_to_message_id=message.message_id)
                 return
             
             canceled_count = 0
@@ -122,49 +203,249 @@ def cancel_github_actions(message):
     except Exception as e:
         safe_send_message(message.chat.id, f"❌ <b>Lỗi:</b> {html.escape(str(e))}", reply_to_message_id=message.message_id)
 
-def trigger_github_action(chat_id, service_id, tiktok_url, reply_to_msg_id=None):
-    if not GITHUB_PAT:
-        safe_send_message(chat_id, "❌ <b>Lỗi:</b> Chưa cấu hình <code>GITHUB_PAT</code> trong <code>.env</code>!", reply_to_message_id=reply_to_msg_id)
+@bot.message_handler(commands=['combo'])
+def handle_combo(message):
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/dispatches"
+    text = message.text.strip()
+    duration, tiktok_url = parse_duration_and_url(text)
+    
+    if not tiktok_url:
+        safe_send_message(
+            message.chat.id, 
+            "⚠️ <b>Cú pháp:</b> <code>/combo [thời_gian_phút] &lt;link_tiktok&gt;</code>\n"
+            "Ví dụ: <code>/combo 45 https://vt.tiktok.com/ZSxxxxxx/</code>\n"
+            "Chế độ Combo sẽ khởi chạy đồng thời 2 bot song song: <b>Views (Xem) + Favorites (Yêu thích)</b>!", 
+            reply_to_message_id=message.message_id
+        )
+        return
+
+    safe_send_message(
+        message.chat.id, 
+        f"🔥 <b>Khởi chạy Combo Tương tác Đa dịch vụ!</b>\n"
+        f"🔗 Link: {html.escape(tiktok_url)}\n"
+        f"⏱ Thời gian: <code>{duration} phút</code>\n"
+        f"⚡ Đang khởi tạo 2 bot song song: <b>Views + Favorites</b>...",
+        reply_to_message_id=message.message_id
+    )
+    
+    trigger_github_action(message.chat.id, "4", tiktok_url, duration_minutes=duration)
+    time.sleep(1.5)
+    trigger_github_action(message.chat.id, "6", tiktok_url, duration_minutes=duration)
+
+@bot.message_handler(commands=['batch'])
+def handle_batch(message):
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    text = message.text.strip()
+    duration, _ = parse_duration_and_url(text)
+    
+    urls = []
+    for line in text.split():
+        u = extract_tiktok_url(line)
+        if u and u not in urls:
+            urls.append(u)
+
+    if not urls:
+        safe_send_message(
+            message.chat.id, 
+            "⚠️ <b>Cú pháp:</b> <code>/batch &lt;link1&gt; &lt;link2&gt; &lt;link3&gt;</code>\n"
+            "hoặc gửi trực tiếp file <code>.txt</code> chứa danh sách link TikTok!", 
+            reply_to_message_id=message.message_id
+        )
+        return
+
+    safe_send_message(message.chat.id, f"📥 <b>Phát hiện {len(urls)} link TikTok!</b>\nĐang gửi tác vụ cày hàng loạt lên GitHub (thời gian: {duration} phút)...", reply_to_message_id=message.message_id)
+    count = 0
+    for u in urls:
+        if trigger_github_action(message.chat.id, "4", u, duration_minutes=duration):
+            count += 1
+        time.sleep(1.5)
+
+    safe_send_message(message.chat.id, f"✅ <b>Đã gửi thành công {count}/{len(urls)} tác vụ cày lên GitHub Actions!</b>")
+
+@bot.message_handler(content_types=['document'])
+def handle_document(message):
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+        
+    doc = message.document
+    if doc and doc.file_name and doc.file_name.endswith('.txt'):
+        try:
+            file_info = bot.get_file(doc.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            content = downloaded_file.decode('utf-8', errors='ignore')
+            
+            urls = []
+            for line in content.splitlines():
+                u = extract_tiktok_url(line)
+                if u and u not in urls:
+                    urls.append(u)
+                    
+            if not urls:
+                safe_send_message(message.chat.id, "⚠️ Không tìm thấy link TikTok hợp lệ nào trong file .txt!", reply_to_message_id=message.message_id)
+                return
+                
+            safe_send_message(message.chat.id, f"📥 <b>Đã nhận file .txt chứa {len(urls)} link TikTok!</b>\nĐang gửi tác vụ cày hàng loạt...", reply_to_message_id=message.message_id)
+            
+            count = 0
+            for u in urls:
+                if trigger_github_action(message.chat.id, "4", u, duration_minutes=60):
+                    count += 1
+                time.sleep(1.5)
+                
+            safe_send_message(message.chat.id, f"✅ <b>Đã gửi thành công {count}/{len(urls)} tác vụ lên GitHub Actions!</b>")
+        except Exception as e:
+            safe_send_message(message.chat.id, f"❌ <b>Lỗi đọc file txt:</b> {html.escape(str(e))}", reply_to_message_id=message.message_id)
+    else:
+        safe_send_message(message.chat.id, "⚠️ Vui lòng chỉ gửi file văn bản <code>.txt</code> chứa các đường link TikTok!", reply_to_message_id=message.message_id)
+
+@bot.message_handler(commands=['status'])
+def handle_status(message):
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    if not GITHUB_PAT:
+        safe_send_message(message.chat.id, "❌ Chưa cấu hình GITHUB_PAT!", reply_to_message_id=message.message_id)
+        return
+
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {GITHUB_PAT}",
         "X-GitHub-Api-Version": "2022-11-28"
     }
-    payload = {
-        "event_type": "telegram_trigger",
-        "client_payload": {
-            "service": str(service_id),
-            "tiktok_url": tiktok_url,
-            "chat_id": str(chat_id)
-        }
-    }
-    
-    service_name = SERVICES.get(str(service_id), "Views")
-    
+
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
-        if res.status_code in [204, 200, 201]:
-            safe_send_message(
-                chat_id, 
-                f"🚀 <b>Đã khởi tạo tác vụ trên GitHub Actions!</b>\n\n"
-                f"🔹 <b>Dịch vụ:</b> <code>{html.escape(service_name)}</code>\n"
-                f"🔗 <b>Link:</b> {html.escape(tiktok_url)}\n"
-                f"⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Muốn dừng hãy nhắn <code>/stop</code>!",
-                reply_to_message_id=reply_to_msg_id
-            )
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?per_page=20"
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            runs = res.json().get("workflow_runs", [])
+            active_runs = [r for r in runs if r.get("status") in ["in_progress", "queued", "waiting", "requested"]]
+
+            if not active_runs:
+                safe_send_message(message.chat.id, "ℹ️ <b>Hiện không có bot nào đang cày trên GitHub Actions.</b>", reply_to_message_id=message.message_id)
+                return
+
+            status_msg = f"⚡ <b>ĐANG CÓ {len(active_runs)} BOT ĐANG CHẠY TRÊN GITHUB:</b>\n\n"
+            for i, run in enumerate(active_runs, 1):
+                run_id = run.get("id")
+                st = run.get("status")
+                created_at = run.get("created_at", "")[:19].replace("T", " ")
+                html_url = run.get("html_url")
+                
+                status_emoji = "⏳" if st in ["queued", "waiting"] else "🚀"
+                status_msg += (
+                    f"{i}. {status_emoji} <b>ID:</b> <code>{run_id}</code>\n"
+                    f"   • Trạng thái: <code>{st}</code>\n"
+                    f"   • Thời gian tạo: {created_at} UTC\n"
+                    f"   • Link GitHub: <a href='{html_url}'>Xem chi tiết</a>\n\n"
+                )
+
+            safe_send_message(message.chat.id, status_msg, reply_to_message_id=message.message_id)
         else:
-            safe_send_message(
-                chat_id, 
-                f"❌ <b>Lỗi kết nối GitHub API (Mã {res.status_code}):</b>\n"
-                f"<code>{html.escape(res.text[:200])}</code>\n"
-                f"Kiểm tra lại GITHUB_PAT token hoặc GITHUB_REPO.", 
-                reply_to_message_id=reply_to_msg_id
-            )
+            safe_send_message(message.chat.id, f"❌ Lỗi kết nối GitHub API: {res.status_code}", reply_to_message_id=message.message_id)
     except Exception as e:
-        safe_send_message(chat_id, f"❌ <b>Lỗi:</b> {html.escape(str(e))}", reply_to_message_id=reply_to_msg_id)
+        safe_send_message(message.chat.id, f"❌ Lỗi: {html.escape(str(e))}", reply_to_message_id=message.message_id)
+
+@bot.message_handler(commands=['history'])
+def handle_history(message):
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    if not GITHUB_PAT:
+        safe_send_message(message.chat.id, "❌ Chưa cấu hình GITHUB_PAT!", reply_to_message_id=message.message_id)
+        return
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_PAT}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?per_page=15"
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            runs = res.json().get("workflow_runs", [])
+            completed_runs = [r for r in runs if r.get("status") == "completed"]
+
+            if not completed_runs:
+                safe_send_message(message.chat.id, "📜 <b>Chưa có lịch sử chạy hoàn tất nào gần đây.</b>", reply_to_message_id=message.message_id)
+                return
+
+            hist_msg = f"📜 <b>LỊCH SỬ 10 TIẾN TRÌNH GẦN NHẤT:</b>\n\n"
+            for i, run in enumerate(completed_runs[:10], 1):
+                conclusion = run.get("conclusion")
+                created_at = run.get("created_at", "")[:19].replace("T", " ")
+                
+                if conclusion == "success":
+                    icon = "✅ Thành công"
+                elif conclusion == "cancelled":
+                    icon = "🛑 Đã hủy"
+                else:
+                    icon = f"❌ {conclusion}"
+
+                hist_msg += (
+                    f"{i}. {icon}\n"
+                    f"   • Thời gian: {created_at} UTC\n"
+                    f"   • Run ID: <code>{run.get('id')}</code>\n\n"
+                )
+
+            safe_send_message(message.chat.id, hist_msg, reply_to_message_id=message.message_id)
+        else:
+            safe_send_message(message.chat.id, f"❌ Lỗi kết nối GitHub API: {res.status_code}", reply_to_message_id=message.message_id)
+    except Exception as e:
+        safe_send_message(message.chat.id, f"❌ Lỗi: {html.escape(str(e))}", reply_to_message_id=message.message_id)
+
+@bot.message_handler(commands=['report'])
+def handle_report(message):
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    if not GITHUB_PAT:
+        safe_send_message(message.chat.id, "❌ Chưa cấu hình GITHUB_PAT!", reply_to_message_id=message.message_id)
+        return
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_PAT}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?per_page=100"
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            runs = res.json().get("workflow_runs", [])
+            
+            today_str = time.strftime("%Y-%m-%d")
+            runs_today = [r for r in runs if r.get("created_at", "").startswith(today_str)]
+            
+            successful_runs = [r for r in runs_today if r.get("conclusion") == "success"]
+            running_runs = [r for r in runs_today if r.get("status") == "in_progress"]
+            cancelled_runs = [r for r in runs_today if r.get("conclusion") == "cancelled"]
+
+            report_msg = (
+                f"📊 <b>BÁO CÁO THỐNG KÊ TỔNG QUAN HÔM NAY ({today_str})</b>\n\n"
+                f"🚀 <b>Tổng số lượt chạy:</b> {len(runs_today)}\n"
+                f"✅ <b>Tác vụ hoàn tất:</b> {len(successful_runs)}\n"
+                f"⚡ <b>Đang hoạt động:</b> {len(running_runs)}\n"
+                f"🛑 <b>Tác vụ đã hủy:</b> {len(cancelled_runs)}\n\n"
+                f"💡 <i>Mẹo: Hệ thống hoạt động 24/7 trên GitHub Actions với thời gian cày tùy chỉnh.</i>"
+            )
+            safe_send_message(message.chat.id, report_msg, reply_to_message_id=message.message_id)
+        else:
+            safe_send_message(message.chat.id, f"❌ Lỗi kết nối GitHub API: {res.status_code}", reply_to_message_id=message.message_id)
+    except Exception as e:
+        safe_send_message(message.chat.id, f"❌ Lỗi: {html.escape(str(e))}", reply_to_message_id=message.message_id)
 
 @bot.message_handler(commands=[
     'views', 'view', 'hearts', 'heart', 'followers', 'follower', 
@@ -174,39 +455,43 @@ def trigger_github_action(chat_id, service_id, tiktok_url, reply_to_msg_id=None)
 def handle_service(message):
     if not message or not message.text:
         return
-    
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
     text = message.text.strip()
-    print(f"[+] Received command: '{text}' from chat_id={message.chat.id}")
+    duration, tiktok_url = parse_duration_and_url(text)
+    
     parts = text.split(maxsplit=2)
     cmd = parts[0].lower().split('@')[0]
     
     if cmd == '/run':
         if len(parts) < 3:
-            safe_send_message(message.chat.id, "⚠️ Cú pháp: <code>/run &lt;số 1-8&gt; &lt;link_tiktok&gt;</code>", reply_to_message_id=message.message_id)
+            safe_send_message(message.chat.id, "⚠️ Cú pháp: <code>/run &lt;số 1-8&gt; [thời_gian_phút] &lt;link_tiktok&gt;</code>", reply_to_message_id=message.message_id)
             return
         service_id = parts[1]
-        raw_url = parts[2]
     else:
         service_id = SERVICE_COMMAND_MAP.get(cmd, '4')
-        raw_url = text[len(parts[0]):].strip() if len(parts) > 1 else ""
 
-    tiktok_url = extract_tiktok_url(raw_url)
     if not tiktok_url:
         safe_send_message(
             message.chat.id, 
-            f"⚠️ <b>Vui lòng điền link TikTok hợp lệ!</b>\n\nVí dụ: <code>{html.escape(cmd)} https://vt.tiktok.com/ZSxxxxxx/</code>", 
+            f"⚠️ <b>Vui lòng điền link TikTok hợp lệ!</b>\n\nVí dụ: <code>{html.escape(cmd)} 30 https://vt.tiktok.com/ZSxxxxxx/</code>", 
             reply_to_message_id=message.message_id
         )
         return
 
-    trigger_github_action(message.chat.id, service_id, tiktok_url, reply_to_msg_id=message.message_id)
+    trigger_github_action(message.chat.id, service_id, tiktok_url, duration_minutes=duration, reply_to_msg_id=message.message_id)
 
 @bot.message_handler(func=lambda m: True)
 def handle_all_messages(message):
     if not message or not message.text:
         return
+    if not is_user_allowed(message.from_user.id):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
     text = message.text.strip()
-    print(f"[+] Handling fallback message: '{text}' from chat_id={message.chat.id}")
     
     if text.startswith('/'):
         cmd_name = text.split()[0].lower().split('@')[0]
@@ -217,15 +502,15 @@ def handle_all_messages(message):
             cancel_github_actions(message)
             return
 
-    tiktok_url = extract_tiktok_url(text)
+    duration, tiktok_url = parse_duration_and_url(text)
     if tiktok_url:
-        trigger_github_action(message.chat.id, "4", tiktok_url, reply_to_msg_id=message.message_id)
+        trigger_github_action(message.chat.id, "4", tiktok_url, duration_minutes=duration, reply_to_msg_id=message.message_id)
     else:
         safe_send_message(
             message.chat.id, 
-            "🤖 <b>ZEFOY TELEGRAM BOT CONTROLLER</b>\n\n"
-            "Gửi <b>link TikTok</b> trực tiếp vào đây để tự động tăng View,\n"
-            "hoặc gõ <code>/help</code> để xem danh sách hướng dẫn lệnh!", 
+            "🤖 <b>ZEFOY TELEGRAM BOT CONTROLLER PRO</b>\n\n"
+            "Gửi <b>link TikTok</b> trực tiếp vào đây để tăng View,\n"
+            "hoặc gõ <code>/help</code> để xem danh sách lệnh!", 
             reply_to_message_id=message.message_id
         )
 
@@ -234,7 +519,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"OK - Zefoy Telegram Bot is running")
+        self.wfile.write(b"OK - Zefoy Telegram Bot PRO is running")
 
 def start_health_check_server():
     port = int(os.getenv("PORT", 10000))
@@ -259,7 +544,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[!] remove_webhook notice: {e}")
 
-    print("[+] Starting Telegram Bot Listener (Infinity Polling)...")
+    print("[+] Starting Telegram Bot PRO Listener (Infinity Polling)...")
     while True:
         try:
             bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)

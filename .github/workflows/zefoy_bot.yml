@@ -54,7 +54,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ github.event.client_payload.chat_id }}
           ZEFOY_SERVICE: ${{ github.event.inputs.service || github.event.client_payload.service || '4' }}
           ZEFOY_URL: ${{ github.event.inputs.tiktok_url || github.event.client_payload.tiktok_url || secrets.ZEFOY_DEFAULT_URL }}
-          BOT_DURATION: ${{ github.event.inputs.duration_minutes || '60' }}
+          BOT_DURATION: ${{ github.event.inputs.duration_minutes || github.event.client_payload.duration_minutes || '60' }}
         run: |
           echo "🚀 Bắt đầu Zefoy Bot..."
           echo "   Dịch vụ: $ZEFOY_SERVICE"
