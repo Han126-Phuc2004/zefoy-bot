@@ -12,10 +12,10 @@ load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "Han126-Phuc2004/zefoy-bot")
-GITHUB_PAT = os.getenv("GITHUB_PAT", os.getenv("GH_PAT", ""))  # Personal Access Token nếu có
+GITHUB_PAT = os.getenv("GITHUB_PAT", os.getenv("GH_PAT", ""))
 
 if not TELEGRAM_TOKEN:
-    print("[!] Thiếu TELEGRAM_BOT_TOKEN trong file .env!")
+    print("[!] Thieu TELEGRAM_BOT_TOKEN trong file .env!")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN if TELEGRAM_TOKEN else "DUMMY_TOKEN")
 
@@ -44,7 +44,7 @@ Mỗi khi bạn gửi lệnh, Bot sẽ kích hoạt **GitHub Actions (Server mi�
 🔹 `/shares <link_tiktok>` - Kích hoạt GitHub cày Shares
 🔹 `/favorites <link_tiktok>` - Kích hoạt GitHub cày Favorites
 
-🔹 `/run <số_1_đến_8> <link_tiktok>` - Chọn dịch vụ
+🔹 `/run <số_1_đến_8> <link_tiktok>` - Chọn dịch vụ theo số (1-8)
     """
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
@@ -65,7 +65,15 @@ def trigger_github_action(chat_id, service_id, tiktok_url):
     }
     
     service_name = SERVICES.get(str(service_id), "Views")
-    bot.send_message(chat_id, f"🚀 *Đã gửi lệnh tới GitHub Actions!*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Máy chủ Ubuntu của GitHub đang khởi động bot...", parse_mode="Markdown")
+    
+    try:
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code in [204, 200, 201]:
+            bot.send_message(chat_id, f"🚀 *Đã gửi lệnh thành công tới GitHub Actions!*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Server Ubuntu của GitHub đang khởi động bot cày view cho bạn...", parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, f"❌ *Lỗi khi gọi GitHub API ({res.status_code}):*\n`{res.text}`", parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ *Lỗi:* {e}", parse_mode="Markdown")
 
 @bot.message_handler(commands=['views', 'hearts', 'followers', 'shares', 'favorites', 'run'])
 def handle_service(message):
@@ -91,7 +99,7 @@ def handle_service(message):
 
 if __name__ == "__main__":
     if TELEGRAM_TOKEN and TELEGRAM_TOKEN != "DUMMY_TOKEN":
-        print("🤖 Telegram Bot Controller đã sẵn sàng...")
+        print("[+] Telegram Bot Controller is running and listening for commands...")
         bot.infinity_polling()
     else:
-        print("[!] Hãy cấu hình TELEGRAM_BOT_TOKEN trước khi chạy!")
+        print("[!] Please configure TELEGRAM_BOT_TOKEN in .env")
