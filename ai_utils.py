@@ -2,12 +2,12 @@ import os
 import base64
 import re
 import time
+import requests
 from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
 
-# --- Utility Functions ---
 def image_to_base64(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
@@ -20,14 +20,56 @@ FREE_VISION_MODELS = [
     "nvidia/nemotron-nano-12b-v2-vl:free"
 ]
 
-# --- OpenRouter Functions ---
+def ask_google_gemini_api(image_path):
+    """Giải CAPTCHA qua Google Gemini API chính chủ (nếu có GOOGLE_API_KEY)."""
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    base64_image = image_to_base64(image_path)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"inline_data": {"mime_type": "image/png", "data": base64_image}},
+                    {"text": "Read the text in this CAPTCHA image. Return only the exact text shown, nothing else."}
+                ]
+            }
+        ]
+    }
+    
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                if text:
+                    print("[+] Giải CAPTCHA thành công qua Google Gemini API!")
+                    return text
+        else:
+            print(f"[!] Google Gemini API trả về mã lỗi {res.status_code}: {res.text[:150]}")
+    except Exception as e:
+        print(f"[!] Lỗi gọi Google Gemini API: {e}")
+    return None
+
 def ask_text_to_openrouter(image_path, model=None):
-    """Read CAPTCHA text from image using OpenRouter free vision models with automatic fallback list."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    """Đọc CAPTCHA từ ảnh bằng cơ chế Fallback đa tầng (Google Gemini API -> OpenRouter Multi-Models)."""
+    
+    # 1. Ưu tiên 1: Thử Google Gemini API trực tiếp nếu có key
+    if os.getenv("GOOGLE_API_KEY"):
+        result = ask_google_gemini_api(image_path)
+        if result:
+            return result
+        print("[!] Chuyển sang Fallback OpenRouter...")
+
+    # 2. Ưu tiên 2: Thử xoay tua các mô hình OpenRouter Free
+    api_key = os.getenv("OPENROUTER_API_KEY", os.getenv("OPENAI_API_KEY", "")).strip()
     if not api_key:
-        api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise Exception("OPENROUTER_API_KEY or OPENAI_API_KEY not configured in .env")
+        raise Exception("Không tìm thấy OPENROUTER_API_KEY hoặc GOOGLE_API_KEY trong .env")
     
     is_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
     client = OpenAI(
@@ -41,7 +83,7 @@ def ask_text_to_openrouter(image_path, model=None):
     last_exception = None
     for m in models_to_try:
         try:
-            print(f"[*] Thử giải CAPTCHA bằng mô hình: {m}...")
+            print(f"[*] Thử giải CAPTCHA bằng mô hình OpenRouter: {m}...")
             response = client.chat.completions.create(
                 model=m,
                 messages=[{
@@ -55,9 +97,10 @@ def ask_text_to_openrouter(image_path, model=None):
             )
             text = response.choices[0].message.content.strip()
             if text:
+                print(f"[+] Giải CAPTCHA thành công qua mô hình: {m}")
                 return text
         except Exception as e:
-            print(f"[!] Lỗi khi gọi model {m}: {e}")
+            print(f"[!] Lỗi mô hình {m}: {e}")
             last_exception = e
             time.sleep(1)
 
