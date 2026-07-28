@@ -537,6 +537,26 @@ def start_health_check_server():
     except Exception as e:
         print(f"[!] Warning: Health check server stopped: {e}")
 
+def setup_bot_commands():
+    """Tự động đăng ký danh sách gợi ý nút bấm / trong menu Telegram."""
+    try:
+        commands = [
+            telebot.types.BotCommand('start', 'Khởi động & xem hướng dẫn'),
+            telebot.types.BotCommand('help', 'Xem danh sách tất cả câu lệnh'),
+            telebot.types.BotCommand('views', 'Tăng Views (Ví dụ: /views 30 link)'),
+            telebot.types.BotCommand('favorites', 'Tăng Yêu thích Favorites'),
+            telebot.types.BotCommand('combo', 'Cày Combo Views + Favorites song song'),
+            telebot.types.BotCommand('batch', 'Cày hàng loạt nhiều link TikTok'),
+            telebot.types.BotCommand('status', 'Xem các bot đang chạy trên GitHub'),
+            telebot.types.BotCommand('history', 'Xem lịch sử 10 lần cày gần nhất'),
+            telebot.types.BotCommand('report', 'Báo cáo thống kê hiệu suất hôm nay'),
+            telebot.types.BotCommand('stop', 'HỦY & DỪNG tất cả các bot đang cày')
+        ]
+        bot.set_my_commands(commands)
+        print("[+] Registered Bot Commands Menu in Telegram UI.")
+    except Exception as e:
+        print(f"[!] Warning set_my_commands error: {e}")
+
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "DUMMY_TOKEN":
         print("[❌] ERROR: TELEGRAM_BOT_TOKEN is missing in .env file!")
@@ -547,9 +567,10 @@ if __name__ == "__main__":
     
     try:
         bot.remove_webhook()
-        print("[+] Webhook cleared.")
+        setup_bot_commands()
+        print("[+] Webhook cleared & Bot Commands menu registered.")
     except Exception as e:
-        print(f"[!] remove_webhook notice: {e}")
+        print(f"[!] Startup notice: {e}")
 
     print("[+] Starting Telegram Bot PRO Listener (Infinity Polling)...")
     while True:
