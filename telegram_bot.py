@@ -10,12 +10,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-GITHUB_REPO = os.getenv("GITHUB_REPO", "Han126-Phuc2004/zefoy-bot")
-GITHUB_PAT = os.getenv("GITHUB_PAT", os.getenv("GH_PAT", ""))
-
-if not TELEGRAM_TOKEN:
-    print("[!] Thieu TELEGRAM_BOT_TOKEN trong file .env!")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+GITHUB_REPO = os.getenv("GITHUB_REPO", "Han126-Phuc2004/zefoy-bot").strip()
+GITHUB_PAT = os.getenv("GITHUB_PAT", os.getenv("GH_PAT", "")).strip()
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN if TELEGRAM_TOKEN else "DUMMY_TOKEN")
 
@@ -33,23 +30,20 @@ SERVICES = {
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     help_text = """
-🤖 *ZEFOY TELEGRAM CONTROLLER FOR GITHUB ACTIONS*
+🤖 *ZEFOY TELEGRAM BOT CONTROLLER*
 
-Mỗi khi bạn gửi lệnh, Bot sẽ kích hoạt **GitHub Actions (Server miễn phí của GitHub)** chạy buff tự động!
+Gửi link TikTok trực tiếp hoặc chọn lệnh bên dưới:
 
-*Danh sách câu lệnh:*
-🔹 `/views <link_tiktok>` - Kích hoạt GitHub cày Views
-🔹 `/hearts <link_tiktok>` - Kích hoạt GitHub cày Hearts
-🔹 `/followers <link_tiktok>` - Kích hoạt GitHub cày Followers
-🔹 `/shares <link_tiktok>` - Kích hoạt GitHub cày Shares
-🔹 `/favorites <link_tiktok>` - Kích hoạt GitHub cày Favorites
+🔹 `/views <link>` - Tự động tăng Views
+🔹 `/hearts <link>` - Tự động tăng Hearts
+🔹 `/followers <link>` - Tự động tăng Followers
+🔹 `/shares <link>` - Tự động tăng Shares
 
-🔹 `/run <số_1_đến_8> <link_tiktok>` - Chọn dịch vụ theo số (1-8)
+Hoặc *chỉ cần dán link TikTok vào đây* để tăng Views mặc định!
     """
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
 def trigger_github_action(chat_id, service_id, tiktok_url):
-    """Gửi yêu cầu tới GitHub API để kích hoạt GitHub Actions runner."""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/dispatches"
     headers = {
         "Accept": "application/vnd.github+json",
@@ -60,7 +54,8 @@ def trigger_github_action(chat_id, service_id, tiktok_url):
         "event_type": "telegram_trigger",
         "client_payload": {
             "service": str(service_id),
-            "tiktok_url": tiktok_url
+            "tiktok_url": tiktok_url,
+            "chat_id": str(chat_id)
         }
     }
     
@@ -69,9 +64,17 @@ def trigger_github_action(chat_id, service_id, tiktok_url):
     try:
         res = requests.post(url, headers=headers, json=payload)
         if res.status_code in [204, 200, 201]:
-            bot.send_message(chat_id, f"🚀 *Đã gửi lệnh thành công tới GitHub Actions!*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Server Ubuntu của GitHub đang khởi động bot cày view cho bạn...", parse_mode="Markdown")
+            bot.send_message(
+                chat_id, 
+                f"🚀 *Đã khởi tạo tác vụ trên GitHub Actions!*\n\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Số lượng view sẽ được báo về khung chat này!", 
+                parse_mode="Markdown"
+            )
         else:
-            bot.send_message(chat_id, f"❌ *Lỗi khi gọi GitHub API ({res.status_code}):*\n`{res.text}`", parse_mode="Markdown")
+            bot.send_message(
+                chat_id, 
+                f"❌ *Lỗi kết nối GitHub API (Mã {res.status_code}):*\nKiểm tra lại GITHUB_PAT token.", 
+                parse_mode="Markdown"
+            )
     except Exception as e:
         bot.send_message(chat_id, f"❌ *Lỗi:* {e}", parse_mode="Markdown")
 
@@ -84,7 +87,7 @@ def handle_service(message):
     
     if cmd == '/run':
         if len(text_parts) < 3:
-            bot.reply_to(message, "⚠️ Cú pháp đúng: `/run <số 1-8> <link_tiktok>`", parse_mode="Markdown")
+            bot.reply_to(message, "⚠️ Cú pháp: `/run <số 1-8> <link_tiktok>`", parse_mode="Markdown")
             return
         service_id = text_parts[1]
         tiktok_url = text_parts[2]
@@ -97,9 +100,14 @@ def handle_service(message):
 
     trigger_github_action(message.chat.id, service_id, tiktok_url)
 
-if __name__ == "__main__":
-    if TELEGRAM_TOKEN and TELEGRAM_TOKEN != "DUMMY_TOKEN":
-        print("[+] Telegram Bot Controller is running and listening for commands...")
-        bot.infinity_polling()
+@bot.message_handler(func=lambda m: True)
+def handle_all_messages(message):
+    txt = message.text.strip()
+    if "tiktok.com" in txt.lower() or "http" in txt.lower():
+        trigger_github_action(message.chat.id, "4", txt)
     else:
-        print("[!] Please configure TELEGRAM_BOT_TOKEN in .env")
+        bot.reply_to(message, "🤖 Gửi link TikTok vào đây để tăng View, hoặc gõ `/help` để xem hướng dẫn!")
+
+if __name__ == "__main__":
+    print("[+] Starting Telegram Bot Listener...")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
