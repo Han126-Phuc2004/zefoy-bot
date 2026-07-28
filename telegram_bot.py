@@ -20,7 +20,7 @@ GITHUB_REPO = os.getenv("GITHUB_REPO", "Han126-Phuc2004/zefoy-bot").strip()
 GITHUB_PAT = os.getenv("GITHUB_PAT", os.getenv("GH_PAT", "")).strip()
 
 ALLOWED_USERS_RAW = os.getenv("ALLOWED_USERS", os.getenv("ADMIN_CHAT_ID", "")).strip()
-ALLOWED_USERS = [u.strip() for u in ALLOWED_USERS_RAW.split(",") if u.strip()]
+ALLOWED_USERS = [u.strip().lstrip('@').lower() for u in ALLOWED_USERS_RAW.split(",") if u.strip()]
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN if TELEGRAM_TOKEN else "DUMMY_TOKEN")
 
@@ -46,11 +46,18 @@ SERVICE_COMMAND_MAP = {
     '/repost': '8'
 }
 
-def is_user_allowed(user_id: int) -> bool:
-    """Kiểm tra xem người dùng có thuộc danh sách Whitelist/Admin hay không."""
+def is_user_allowed(from_user) -> bool:
+    """Kiểm tra xem người dùng có thuộc danh sách Whitelist/Admin hay không (theo ID hoặc Username)."""
     if not ALLOWED_USERS:
         return True
-    return str(user_id) in ALLOWED_USERS
+    if not from_user:
+        return False
+    user_id = str(from_user.id)
+    username = (getattr(from_user, 'username', '') or '').lstrip('@').lower()
+    for allowed in ALLOWED_USERS:
+        if allowed == user_id or (username and allowed == username):
+            return True
+    return False
 
 def extract_tiktok_url(text: str) -> str:
     """Trích xuất URL TikTok chính xác từ chuỗi nhập vào."""
@@ -139,7 +146,7 @@ def trigger_github_action(chat_id, service_id, tiktok_url, duration_minutes=60, 
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -164,7 +171,7 @@ Bạn có thể gửi <b>trực tiếp Link TikTok</b> hoặc gửi <b>file .txt
 
 @bot.message_handler(commands=['stop', 'cancel'])
 def cancel_github_actions(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -205,7 +212,7 @@ def cancel_github_actions(message):
 
 @bot.message_handler(commands=['combo'])
 def handle_combo(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -237,7 +244,7 @@ def handle_combo(message):
 
 @bot.message_handler(commands=['batch'])
 def handle_batch(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -270,7 +277,7 @@ def handle_batch(message):
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
         
@@ -307,7 +314,7 @@ def handle_document(message):
 
 @bot.message_handler(commands=['status'])
 def handle_status(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -355,7 +362,7 @@ def handle_status(message):
 
 @bot.message_handler(commands=['history'])
 def handle_history(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -406,7 +413,7 @@ def handle_history(message):
 
 @bot.message_handler(commands=['report'])
 def handle_report(message):
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -455,7 +462,7 @@ def handle_report(message):
 def handle_service(message):
     if not message or not message.text:
         return
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
@@ -487,7 +494,7 @@ def handle_service(message):
 def handle_all_messages(message):
     if not message or not message.text:
         return
-    if not is_user_allowed(message.from_user.id):
+    if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
