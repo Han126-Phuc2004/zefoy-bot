@@ -39,9 +39,41 @@ Gửi link TikTok trực tiếp hoặc chọn lệnh bên dưới:
 🔹 `/followers <link>` - Tự động tăng Followers
 🔹 `/shares <link>` - Tự động tăng Shares
 
-Hoặc *chỉ cần dán link TikTok vào đây* để tăng Views mặc định!
+🛑 `/stop` - HỦY DỪNG tất cả các bot đang cày view trên GitHub!
     """
     bot.reply_to(message, help_text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['stop', 'cancel'])
+def cancel_github_actions(message):
+    """Hủy và dừng tất cả các tiến trình đang chạy trên GitHub Actions."""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?status=in_progress"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_PAT}" if GITHUB_PAT else "",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+    
+    try:
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            runs = res.json().get("workflow_runs", [])
+            if not runs:
+                bot.reply_to(message, "ℹ️ *Hiện không có bot nào đang chạy trên GitHub.*", parse_mode="Markdown")
+                return
+            
+            canceled_count = 0
+            for run in runs:
+                run_id = run.get("id")
+                cancel_url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs/{run_id}/cancel"
+                cancel_res = requests.post(cancel_url, headers=headers)
+                if cancel_res.status_code in [202, 200]:
+                    canceled_count += 1
+            
+            bot.reply_to(message, f"🛑 *Đã gửi lệnh dừng thành công cho {canceled_count} bot đang chạy trên GitHub!*", parse_mode="Markdown")
+        else:
+            bot.reply_to(message, f"❌ *Lỗi kiểm tra GitHub API ({res.status_code})*", parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, f"❌ *Lỗi:* {e}", parse_mode="Markdown")
 
 def trigger_github_action(chat_id, service_id, tiktok_url):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/dispatches"
@@ -66,7 +98,7 @@ def trigger_github_action(chat_id, service_id, tiktok_url):
         if res.status_code in [204, 200, 201]:
             bot.send_message(
                 chat_id, 
-                f"🚀 *Đã khởi tạo tác vụ trên GitHub Actions!*\n\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Số lượng view sẽ được báo về khung chat này!", 
+                f"🚀 *Đã khởi tạo tác vụ trên GitHub Actions!*\n\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {tiktok_url}\n⏱ Máy chủ Ubuntu của GitHub đang khởi động bot... Muốn dừng hãy nhắn `/stop`!", 
                 parse_mode="Markdown"
             )
         else:
@@ -106,7 +138,7 @@ def handle_all_messages(message):
     if "tiktok.com" in txt.lower() or "http" in txt.lower():
         trigger_github_action(message.chat.id, "4", txt)
     else:
-        bot.reply_to(message, "🤖 Gửi link TikTok vào đây để tăng View, hoặc gõ `/help` để xem hướng dẫn!")
+        bot.reply_to(message, "🤖 Gửi link TikTok vào đây để tăng View, gõ `/stop` để dừng bot, hoặc gõ `/help` để xem hướng dẫn!")
 
 if __name__ == "__main__":
     print("[+] Starting Telegram Bot Listener...")
