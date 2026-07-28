@@ -339,20 +339,39 @@ def handle_status(message):
                 safe_send_message(message.chat.id, "ℹ️ <b>Hiện không có bot nào đang cày trên GitHub Actions.</b>", reply_to_message_id=message.message_id)
                 return
 
-            status_msg = f"⚡ <b>ĐANG CÓ {len(active_runs)} BOT ĐANG CHẠY TRÊN GITHUB:</b>\n\n"
+            total_jobs = 0
+            runs_detail = []
             for i, run in enumerate(active_runs, 1):
                 run_id = run.get("id")
                 st = run.get("status")
                 created_at = run.get("created_at", "")[:19].replace("T", " ")
                 html_url = run.get("html_url")
                 
+                # Lấy danh sách Matrix Jobs bên trong
+                jobs_count = 2
+                try:
+                    jres = requests.get(run.get("jobs_url"), headers=headers, timeout=5)
+                    if jres.status_code == 200:
+                        jlist = jres.json().get("jobs", [])
+                        if jlist:
+                            jobs_count = len(jlist)
+                except Exception:
+                    pass
+
+                total_jobs += jobs_count
                 status_emoji = "⏳" if st in ["queued", "waiting"] else "🚀"
-                status_msg += (
-                    f"{i}. {status_emoji} <b>ID:</b> <code>{run_id}</code>\n"
+                runs_detail.append(
+                    f"{i}. {status_emoji} <b>Workflow ID:</b> <code>{run_id}</code>\n"
+                    f"   • Số máy chủ Matrix: <b>{jobs_count} Workers song song</b>\n"
                     f"   • Trạng thái: <code>{st}</code>\n"
                     f"   • Thời gian tạo: {created_at} UTC\n"
-                    f"   • Link GitHub: <a href='{html_url}'>Xem chi tiết</a>\n\n"
+                    f"   • Link GitHub: <a href='{html_url}'>Xem chi tiết</a>\n"
                 )
+
+            status_msg = (
+                f"⚡ <b>ĐANG CÓ {len(active_runs)} TÁC VỤ WORKFLOW ({total_jobs} MÁY CHỦ MATRIX WORKERS) ĐANG CHẠY TRÊN GITHUB:</b>\n\n"
+                + "\n".join(runs_detail)
+            )
 
             safe_send_message(message.chat.id, status_msg, reply_to_message_id=message.message_id)
         else:
