@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.png
+temp_captcha.png
+venv/

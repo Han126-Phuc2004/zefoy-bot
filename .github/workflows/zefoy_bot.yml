@@ -1,0 +1,68 @@
+name: Zefoy Auto Bot
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Dịch vụ (1=Followers 2=Hearts 3=CHearts 4=Views 5=Shares 6=Favorites 7=Live 8=Repost)'
+        required: true
+        default: '4'
+      tiktok_url:
+        description: 'TikTok Video URL'
+        required: true
+        default: ''
+      duration_minutes:
+        description: 'Chạy bao nhiêu phút? (max 330)'
+        required: true
+        default: '60'
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 🌐 Install Chrome
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y google-chrome-stable
+          google-chrome --version
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install selenium webdriver-manager openai python-dotenv requests Pillow
+
+      - name: 🤖 Run Zefoy Bot
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ZEFOY_SERVICE: ${{ github.event.inputs.service || '4' }}
+          ZEFOY_URL: ${{ github.event.inputs.tiktok_url || secrets.ZEFOY_DEFAULT_URL }}
+          BOT_DURATION: ${{ github.event.inputs.duration_minutes || '60' }}
+        run: |
+          echo "🚀 Bắt đầu Zefoy Bot..."
+          echo "   Dịch vụ: $ZEFOY_SERVICE"
+          echo "   URL: $ZEFOY_URL"
+          echo "   Thời gian chạy: ${BOT_DURATION} phút"
+          
+          cat > .env << EOF
+          OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+          OPENAI_API_KEY=$OPENAI_API_KEY
+          GOOGLE_API_KEY=$GOOGLE_API_KEY
+          EOF
+          
+          timeout ${BOT_DURATION}m python zefoy_headless.py \
+            --service "$ZEFOY_SERVICE" \
+            --url "$ZEFOY_URL" || echo "✅ Bot đã chạy xong (timeout hoặc hoàn tất)."
