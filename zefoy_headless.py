@@ -315,7 +315,7 @@ def run_bot(video_url: str, service: dict):
                 if submit_btn:
                     count_text = submit_btn.text.strip()
                     total_submits += 1
-                    msg = f"🎉 *[Tăng thành công lần {total_submits}]*\n🔹 Dịch vụ: `{service_name}`\n📊 Số lượng hiển thị: *{count_text}*"
+                    msg = f"🎉 *[Tăng thành công lần {total_submits}]*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {video_url}\n📊 Số lượng hiển thị: *{count_text}*"
                     print(f"[Cycle {cycle}] Submit! Số lượng: {count_text}")
                     send_telegram_notification(msg)
                     submit_btn.click()
@@ -342,7 +342,7 @@ def run_bot(video_url: str, service: dict):
                 print(f"[Cycle {cycle}] Lỗi: {e}")
                 time.sleep(5)
     finally:
-        send_telegram_notification("🛑 *Zefoy Bot đã kết thúc tác vụ.*")
+        send_telegram_notification(f"🛑 *Zefoy Bot đã kết thúc tác vụ.*\n🔗 Link: {video_url}")
         driver.quit()
         print("[+] Đã đóng browser.")
 
