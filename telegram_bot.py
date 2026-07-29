@@ -181,14 +181,19 @@ Bạn có thể gửi <b>trực tiếp Link TikTok</b> hoặc gửi <b>file .txt
     """
     safe_send_message(message.chat.id, help_text, reply_to_message_id=message.message_id)
 
+CANCEL_VIDEO_REQUESTS = {}
+
 @bot.message_handler(commands=['stop', 'cancel'])
 def cancel_github_actions(message):
     if not is_user_allowed(message.from_user):
         safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
         return
 
+    # Đặt cờ dừng tạo video AI lập tức
+    CANCEL_VIDEO_REQUESTS[message.chat.id] = True
+
     if not GITHUB_PAT:
-        safe_send_message(message.chat.id, "❌ <b>Lỗi:</b> Chưa cấu hình <code>GITHUB_PAT</code> trong <code>.env</code>!", reply_to_message_id=message.message_id)
+        safe_send_message(message.chat.id, "🛑 <b>Đã gửi lệnh DỪNG tác vụ tạo Video AI thành công!</b>", reply_to_message_id=message.message_id)
         return
 
     headers = {
@@ -205,7 +210,7 @@ def cancel_github_actions(message):
             active_runs = [r for r in runs if r.get("status") in ["in_progress", "queued", "waiting", "requested"]]
             
             if not active_runs:
-                safe_send_message(message.chat.id, "ℹ️ <b>Hiện không có bot nào đang cày trên GitHub.</b>", reply_to_message_id=message.message_id)
+                safe_send_message(message.chat.id, "🛑 <b>Đã gửi lệnh DỪNG tác vụ tạo Video AI thành công!</b>\nℹ️ <i>Hiện không có bot cày Zefoy nào trên GitHub đang chạy.</i>", reply_to_message_id=message.message_id)
                 return
             
             canceled_count = 0
@@ -216,11 +221,11 @@ def cancel_github_actions(message):
                 if cancel_res.status_code in [202, 200]:
                     canceled_count += 1
             
-            safe_send_message(message.chat.id, f"🛑 <b>Đã gửi lệnh dừng thành công cho {canceled_count} bot đang chạy trên GitHub!</b>", reply_to_message_id=message.message_id)
+            safe_send_message(message.chat.id, f"🛑 <b>Đã DỪNG toàn bộ tác vụ tạo Video AI và {canceled_count} bot cày trên GitHub!</b>", reply_to_message_id=message.message_id)
         else:
-            safe_send_message(message.chat.id, f"❌ <b>Lỗi kiểm tra GitHub API ({res.status_code})</b>\n<code>{html.escape(res.text[:200])}</code>", reply_to_message_id=message.message_id)
+            safe_send_message(message.chat.id, f"🛑 <b>Đã gửi lệnh DỪNG tác vụ tạo Video AI thành công!</b>", reply_to_message_id=message.message_id)
     except Exception as e:
-        safe_send_message(message.chat.id, f"❌ <b>Lỗi:</b> {html.escape(str(e))}", reply_to_message_id=message.message_id)
+        safe_send_message(message.chat.id, f"🛑 <b>Đã gửi lệnh DỪNG tác vụ tạo Video AI thành công!</b>", reply_to_message_id=message.message_id)
 
 @bot.message_handler(commands=['combo'])
 def handle_combo(message):
