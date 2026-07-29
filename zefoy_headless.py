@@ -413,7 +413,9 @@ if __name__ == "__main__":
                         help="Số dịch vụ (1-8). Mặc định: 4 (Views)")
     parser.add_argument("--url", default=os.getenv("ZEFOY_URL", ""),
                         help="TikTok Video URL")
-    args = parser.parse_args()
+    parser.add_argument("--duration", default=os.getenv("BOT_DURATION", "60"),
+                        help="Thời gian chạy (phút)")
+    args, unknown = parser.parse_known_args()
 
     if args.service not in SERVICES:
         print(f"[!] Dịch vụ không hợp lệ: {args.service}. Chọn 1-8.")
