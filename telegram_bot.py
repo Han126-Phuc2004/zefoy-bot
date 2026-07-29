@@ -70,17 +70,29 @@ def extract_tiktok_url(text: str) -> str:
     return ""
 
 def parse_duration_and_url(text: str) -> tuple[int, str]:
-    """Phân tích thời gian (phút) và TikTok URL từ câu lệnh."""
+    """Phân tích thời gian (phút) và TikTok URL từ câu lệnh.
+    Ưu tiên số có 2-3 chữ số (10-330) làm duration trước.
+    """
     duration = 60
     url = extract_tiktok_url(text)
     text_without_url = text.replace(url, "") if url else text
-    num_matches = re.findall(r'\b\d{1,3}\b', text_without_url)
-    if num_matches:
-        for num_str in num_matches:
-            val = int(num_str)
-            if 1 <= val <= 330:
-                duration = val
-                break
+
+    # Ưu tiên số 2-3 chữ số (10-330) — tránh nhầm service ID (1 chữ số)
+    num_matches = re.findall(r'\b(\d{2,3})\b', text_without_url)
+    for num_str in num_matches:
+        val = int(num_str)
+        if 10 <= val <= 330:
+            duration = val
+            return duration, url
+
+    # Fallback: lấy số 1-3 chữ số bất kỳ (>= 1)
+    num_matches_all = re.findall(r'\b(\d{1,3})\b', text_without_url)
+    for num_str in num_matches_all:
+        val = int(num_str)
+        if 1 <= val <= 330:
+            duration = val
+            break
+
     return duration, url
 
 def safe_send_message(chat_id, text, parse_mode="HTML", reply_to_message_id=None):
@@ -716,9 +728,16 @@ def handle_service(message):
         service_id = SERVICE_COMMAND_MAP.get(cmd, '4')
 
     if not tiktok_url:
+        service_name = SERVICES.get(service_id, "Views")
         safe_send_message(
-            message.chat.id, 
-            f"⚠️ <b>Vui lòng điền link TikTok hợp lệ!</b>\n\nVí dụ: <code>{html.escape(cmd)} 30 https://vt.tiktok.com/ZSxxxxxx/</code>", 
+            message.chat.id,
+            f"⚠️ <b>Thiếu link TikTok hợp lệ!</b>\n\n"
+            f"📌 <b>Cú pháp đúng:</b>\n"
+            f"<code>{html.escape(cmd)} [số_phút] https://vt.tiktok.com/ZSxxxxxx/</code>\n\n"
+            f"✅ <b>Ví dụ:</b>\n"
+            f"<code>{html.escape(cmd)} 180 https://vt.tiktok.com/ZS48b1NEy/</code>\n\n"
+            f"❌ Lệnh bạn vừa gõ không có link TikTok (https://...) — "
+            f"hãy copy link video TikTok và dán vào sau số phút!",
             reply_to_message_id=message.message_id
         )
         return
