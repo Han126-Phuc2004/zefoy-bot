@@ -175,9 +175,10 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: Ima
         lines.append(" ".join(current_line))
     return lines
 
-import gc
+import subprocess
+import imageio_ffmpeg
 
-def create_video_frame(script_data: dict, width: int = 720, height: int = 1280) -> np.ndarray:
+def create_video_frame(script_data: dict, width: int = 720, height: int = 1280) -> Image.Image:
     """Vẽ 1 khung ảnh đẹp chuẩn CRISP HD 720p 9:16 dùng Pillow (Nền Dark Slate + Card Phụ Đề + Title Vàng Gold)."""
     img = Image.new("RGB", (width, height), color=(15, 23, 42))
     draw = ImageDraw.Draw(img)
@@ -231,10 +232,10 @@ def create_video_frame(script_data: dict, width: int = 720, height: int = 1280) 
         draw.text((x, y_cursor), line, font=font_body, fill=fill_color)
         y_cursor += 38
         
-    return np.array(img)
+    return img
 
 def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", status_callback=None) -> str:
-    """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu sắc nét HD 720p."""
+    """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu tốc qua Direct FFmpeg CLI."""
     print(f"\n[AI Video Generator] Bat dau tu dong tao video CRISP HD cho chu de: '{topic}'...")
     
     if status_callback:
@@ -247,44 +248,59 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     if status_callback:
         status_callback("2/4", "🎙️ Đang sinh giọng đọc AI (EverAI/Edge-TTS)...")
 
-    temp_audio = f"temp_voice_{int(time.time())}.mp3"
+    ts = int(time.time())
+    temp_audio = f"temp_voice_{ts}.mp3"
+    temp_img = f"temp_frame_{ts}.png"
+    
     generate_voiceover(full_speech, temp_audio)
     
     if not os.path.exists(temp_audio):
         raise Exception("Khong the tao file am thanh TTS.")
         
-    audio_clip = AudioFileClip(temp_audio)
-    duration = audio_clip.duration
+    if status_callback:
+        status_callback("3/4", f"🎨 Đang vẽ khung hình Crisp HD 720p...")
+
+    img_obj = create_video_frame(script_data, width=720, height=1280)
+    img_obj.save(temp_img)
     
     if status_callback:
-        status_callback("3/4", f"🎨 Đang vẽ khung hình Crisp HD 720p ({duration:.1f}s)...")
+        status_callback("4/4", f"⚡ Đang xuất video HD qua Direct FFmpeg CLI...")
 
-    frame_np = create_video_frame(script_data, width=720, height=1280)
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    cmd = [
+        ffmpeg_exe, "-y",
+        "-loop", "1",
+        "-i", temp_img,
+        "-i", temp_audio,
+        "-c:v", "libx264",
+        "-tune", "stillimage",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-pix_fmt", "yuv420p",
+        "-shortest",
+        output_mp4_path
+    ]
+    print(f"[Direct FFmpeg Engine] Executing render command...")
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
     
-    if status_callback:
-        status_callback("4/4", f"⚡ Đang render xuất file MP4 HD sắc nét...")
-
-    video_clip = ImageClip(frame_np).with_duration(duration)
-    video_clip = video_clip.with_audio(audio_clip)
-    
-    print(f"[Video Renderer] Dang render video CRISP HD MP4 ({duration:.1f}s)...")
-    video_clip.write_videofile(
-        output_mp4_path,
-        fps=24,
-        codec="libx264",
-        audio_codec="aac",
-        preset="medium",
-        ffmpeg_params=["-crf", "20"],
-        logger=None
-    )
-    
-    audio_clip.close()
-    video_clip.close()
+    if os.path.exists(temp_img):
+        try:
+            os.remove(temp_img)
+        except Exception:
+            pass
     if os.path.exists(temp_audio):
-        os.remove(temp_audio)
+        try:
+            os.remove(temp_audio)
+        except Exception:
+            pass
+
+    if res.returncode != 0:
+        err_msg = res.stderr.decode('utf-8', errors='ignore')
+        print(f"[!] FFmpeg CLI Error: {err_msg}")
+        raise Exception(f"Lỗi render FFmpeg: {err_msg[:100]}")
         
     gc.collect()
-    print(f"[Hoan thanh] Da tao xong video CRISP HD: {output_mp4_path}")
+    print(f"[Hoan thanh] Da tao xong video CRISP HD sieu toc: {output_mp4_path}")
     return output_mp4_path
 
 if __name__ == "__main__":
