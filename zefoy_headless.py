@@ -403,12 +403,12 @@ def run_bot(video_url: str, service: dict):
                     print(f"[Cycle {cycle}] {msg_submit}")
                     send_telegram_notification(msg_submit)
                     submit_btn.click()
-                    time.sleep(5)
+                    time.sleep(12)  # Đợi 12 giây để Zefoy xử lý request & hiện Timer Cooldown
                 elif search_btn:
                     ensure_input_filled(driver, video_url)
                     print(f"[Cycle {cycle}] Click Search...")
                     search_btn.click()
-                    time.sleep(3)
+                    time.sleep(8)   # Đợi 8 giây để nút Search trả về kết quả/nút Submit
                 else:
                     time.sleep(5)
 
