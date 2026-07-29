@@ -98,7 +98,7 @@ def generate_everai_tts(text: str, output_path: str, voice_code: str = "vi_femal
         "pitch_rate": 1.0
     }
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             if res.headers.get("content-type", "").startswith("audio/"):
                 with open(output_path, "wb") as f:
@@ -115,9 +115,9 @@ def generate_everai_tts(text: str, output_path: str, voice_code: str = "vi_femal
             request_id = (data.get("result") or {}).get("request_id") or data.get("request_id")
             
             if not audio_url and request_id:
-                for _ in range(12):
-                    time.sleep(2)
-                    poll_res = requests.get(f"https://www.everai.vn/api/v1/tts/{request_id}", headers=headers, timeout=10)
+                for _ in range(5):
+                    time.sleep(1.5)
+                    poll_res = requests.get(f"https://www.everai.vn/api/v1/tts/{request_id}", headers=headers, timeout=5)
                     if poll_res.status_code == 200:
                         poll_data = poll_res.json()
                         audio_url = poll_data.get("result", {}).get("audio_link") or poll_data.get("audio_link")
@@ -125,7 +125,7 @@ def generate_everai_tts(text: str, output_path: str, voice_code: str = "vi_femal
                             break
                             
             if audio_url:
-                audio_res = requests.get(audio_url, timeout=15)
+                audio_res = requests.get(audio_url, timeout=10)
                 if audio_res.status_code == 200:
                     with open(output_path, "wb") as f:
                         f.write(audio_res.content)
@@ -146,10 +146,15 @@ def generate_voiceover(text: str, output_audio_path: str, voice: str = "vi-VN-Ho
             return True
         print("[!] Chuyen sang Edge-TTS...")
 
-    # 2. Dự phòng Edge-TTS Microsoft Neural Voice
+    # 2. Dự phòng Edge-TTS Microsoft Neural Voice (Asyncio Thread Safe)
     try:
         print(f"[AI Voice] Dang sinh giong doc Edge-TTS ({voice})...")
-        asyncio.run(_async_tts(text, output_audio_path, voice))
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_async_tts(text, output_audio_path, voice))
+        finally:
+            loop.close()
         print(f"[AI Voice] Da luu file am thanh Edge-TTS: {output_audio_path}")
         return True
     except Exception as e:
