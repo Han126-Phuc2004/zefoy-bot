@@ -268,8 +268,16 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     img_obj = create_video_frame(script_data, width=720, height=1280)
     img_obj.save(temp_img)
     
+    # Đọc thời lượng âm thanh để ép FFmpeg xuất đúng số giây, tránh lặp vô tận
+    try:
+        audio_clip = AudioFileClip(temp_audio)
+        duration = audio_clip.duration
+        audio_clip.close()
+    except Exception:
+        duration = 15.0
+
     if status_callback:
-        status_callback("4/4", f"⚡ Đang xuất video HD qua Direct FFmpeg CLI...")
+        status_callback("4/4", f"⚡ Đang xuất video HD qua Direct FFmpeg CLI ({duration:.1f}s)...")
 
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
@@ -282,16 +290,23 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
         "-loop", "1",
         "-i", temp_img,
         "-i", temp_audio,
+        "-t", f"{duration:.2f}",
         "-c:v", "libx264",
+        "-preset", "ultrafast",
         "-tune", "stillimage",
         "-c:a", "aac",
         "-b:a", "192k",
         "-pix_fmt", "yuv420p",
-        "-shortest",
         output_mp4_path
     ]
-    print(f"[Direct FFmpeg Engine] Executing render command...")
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
+    print(f"[Direct FFmpeg Engine] Executing render command ({duration:.1f}s)...")
+    res = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30
+    )
     
     if os.path.exists(temp_img):
         try:
