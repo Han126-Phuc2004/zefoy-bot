@@ -5,6 +5,9 @@
 # ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
+# Install ffmpeg for fast video rendering
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt-get/lists/*
+
 WORKDIR /app
 
 # Cài đặt Python Dependencies

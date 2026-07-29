@@ -266,7 +266,12 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     if status_callback:
         status_callback("4/4", f"⚡ Đang xuất video HD qua Direct FFmpeg CLI...")
 
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    try:
+        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        ffmpeg_exe = "ffmpeg"
+    except Exception:
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
     cmd = [
         ffmpeg_exe, "-y",
         "-loop", "1",
