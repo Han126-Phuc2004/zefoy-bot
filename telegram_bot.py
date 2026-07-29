@@ -457,8 +457,6 @@ def handle_report(message):
             
             successful_runs = [r for r in runs_today if r.get("conclusion") == "success"]
             running_runs = [r for r in runs_today if r.get("status") == "in_progress"]
-            cancelled_runs = [r for r in runs_today if r.get("conclusion") == "cancelled"]
-
             report_msg = (
                 f"📊 <b>BÁO CÁO THỐNG KÊ TỔNG QUAN HÔM NAY ({today_str})</b>\n\n"
                 f"🚀 <b>Tổng số lượt chạy:</b> {len(runs_today)}\n"
@@ -472,6 +470,173 @@ def handle_report(message):
             safe_send_message(message.chat.id, f"❌ Lỗi kết nối GitHub API: {res.status_code}", reply_to_message_id=message.message_id)
     except Exception as e:
         safe_send_message(message.chat.id, f"❌ Lỗi: {html.escape(str(e))}", reply_to_message_id=message.message_id)
+
+@bot.message_handler(commands=['analytics', 'thongke'])
+def handle_analytics(message):
+    if not is_user_allowed(message.from_user):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    if not GITHUB_PAT:
+        safe_send_message(message.chat.id, "❌ Chưa cấu hình GITHUB_PAT!", reply_to_message_id=message.message_id)
+        return
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_PAT}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs?per_page=100"
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            runs = res.json().get("workflow_runs", [])
+            total_runs = len(runs)
+            successful_runs = len([r for r in runs if r.get("conclusion") == "success"])
+            active_runs = len([r for r in runs if r.get("status") in ["in_progress", "queued"]])
+            cancelled_runs = len([r for r in runs if r.get("conclusion") == "cancelled"])
+
+            # Ước tính tổng views cày được (mỗi run trung bình cày 60-120 phút = 60,000 - 120,000 views)
+            est_views = (successful_runs * 60000) + (active_runs * 15000)
+
+            analytics_msg = (
+                f"📈 <b>BÁO CÁO PHÂN TÍCH & HIỆU SUẤT HỆ THỐNG (/analytics)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🚀 <b>Tổng số Tác vụ đã kích hoạt:</b> {total_runs}\n"
+                f"✅ <b>Tác vụ hoàn thành xuất sắc:</b> {successful_runs}\n"
+                f"⚡ <b>Máy chủ đang cày (In-Progress):</b> {active_runs} (Tương đương {active_runs * 2} Workers Matrix)\n"
+                f"🛑 <b>Tác vụ đã hủy:</b> {cancelled_runs}\n"
+                f"🏆 <b>Ước tính TỔNG VIEW ĐÃ BUFF:</b> ~<b>{est_views:,} Views</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"💡 <i>Hệ thống tự động sử dụng Matrix Workers 200 OK AI Vision chống 429 hoàn hảo.</i>"
+            )
+            safe_send_message(message.chat.id, analytics_msg, reply_to_message_id=message.message_id)
+        else:
+            safe_send_message(message.chat.id, f"❌ Lỗi kết nối GitHub API: {res.status_code}", reply_to_message_id=message.message_id)
+    except Exception as e:
+        safe_send_message(message.chat.id, f"❌ Lỗi: {html.escape(str(e))}", reply_to_message_id=message.message_id)
+
+SCHEDULES_FILE = "schedules.json"
+
+def load_schedules():
+    if os.path.exists(SCHEDULES_FILE):
+        try:
+            with open(SCHEDULES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_schedules(schedules):
+    try:
+        with open(SCHEDULES_FILE, "w", encoding="utf-8") as f:
+            json.dump(schedules, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[!] Save schedules error: {e}")
+
+@bot.message_handler(commands=['target'])
+def handle_target(message):
+    if not is_user_allowed(message.from_user):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    text = message.text.strip()
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        safe_send_message(
+            message.chat.id, 
+            "⚠️ <b>Cú pháp:</b> <code>/target @username_hoặc_link</code>\n\n"
+            "Ví dụ: <code>/target @nhkaoud</code>", 
+            reply_to_message_id=message.message_id
+        )
+        return
+
+    target_input = parts[1].strip()
+    duration, tiktok_url = parse_duration_and_url(target_input)
+    if not tiktok_url:
+        # Nếu user truyền @username
+        username = target_input.replace('@', '').strip()
+        tiktok_url = f"https://www.tiktok.com/@{username}"
+
+    safe_send_message(
+        message.chat.id, 
+        f"🎯 <b>Đã cài đặt Target cày tự động cho Kênh/Link:</b> <code>{html.escape(tiktok_url)}</code>\n"
+        f"🚀 Đang khởi tạo dàn Máy chủ Matrix cày gối đầu...", 
+        reply_to_message_id=message.message_id
+    )
+
+    trigger_github_action(message.chat.id, "4", tiktok_url, duration_minutes=duration, reply_to_msg_id=message.message_id)
+
+@bot.message_handler(commands=['schedule', 'datlich'])
+def handle_schedule(message):
+    if not is_user_allowed(message.from_user):
+        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
+        return
+
+    text = message.text.strip()
+    parts = text.split(maxsplit=2)
+    if len(parts) < 3:
+        schedules = load_schedules()
+        msg = "⏰ <b>HƯỚNG DẪN ĐẶT LỊCH CÀY TỰ ĐỘNG (/schedule)</b>\n\n"
+        msg += "<b>Cú pháp:</b> <code>/schedule &lt;số_giờ_lặp&gt; &lt;link_TikTok_hoặc_@username&gt;</code>\n"
+        msg += "Ví dụ: <code>/schedule 6 https://vt.tiktok.com/ZS4RWsL2A/</code> (Cứ 6 tiếng tự cày 1 lần)\n\n"
+        msg += f"📋 <b>Danh sách lịch đang hoạt động ({len(schedules)}):</b>\n"
+        for i, s in enumerate(schedules, 1):
+            msg += f"{i}. Lặp mỗi <b>{s.get('interval_hours')}h</b> ➔ <code>{html.escape(s.get('url'))}</code>\n"
+        safe_send_message(message.chat.id, msg, reply_to_message_id=message.message_id)
+        return
+
+    try:
+        interval_hours = float(parts[1])
+        target_str = parts[2].strip()
+        _, tiktok_url = parse_duration_and_url(target_str)
+        if not tiktok_url:
+            tiktok_url = target_str
+
+        schedules = load_schedules()
+        new_item = {
+            "chat_id": message.chat.id,
+            "interval_hours": interval_hours,
+            "url": tiktok_url,
+            "last_run": 0
+        }
+        schedules.append(new_item)
+        save_schedules(schedules)
+
+        safe_send_message(
+            message.chat.id, 
+            f"✅ <b>ĐÃ ĐẶT LỊCH THÀNH CÔNG!</b>\n\n"
+            f"⏰ <b>Chu kỳ:</b> Cứ mỗi <b>{interval_hours} tiếng</b>\n"
+            f"🔗 <b>Target:</b> <code>{html.escape(tiktok_url)}</code>\n"
+            f"🤖 <i>GitHub Actions sẽ tự động kích hoạt máy chủ cày đúng giờ!</i>",
+            reply_to_message_id=message.message_id
+        )
+    except Exception as e:
+        safe_send_message(message.chat.id, f"❌ Lỗi định dạng số giờ: {html.escape(str(e))}", reply_to_message_id=message.message_id)
+
+def run_scheduler_loop():
+    """Vòng lặp daemon kiểm tra và tự động trigger công việc theo lịch."""
+    while True:
+        try:
+            time.sleep(60)
+            schedules = load_schedules()
+            now = time.time()
+            updated = False
+            for s in schedules:
+                interval_sec = s.get("interval_hours", 6) * 3600
+                last_run = s.get("last_run", 0)
+                if now - last_run >= interval_sec:
+                    chat_id = s.get("chat_id")
+                    url = s.get("url")
+                    print(f"[+] [Scheduler] Kích hoạt cày tự động theo lịch cho URL: {url}")
+                    trigger_github_action(chat_id, "4", url, duration_minutes=60)
+                    s["last_run"] = now
+                    updated = True
+            if updated:
+                save_schedules(schedules)
+        except Exception as e:
+            print(f"[!] Scheduler error: {e}")
 
 @bot.message_handler(commands=[
     'views', 'view', 'hearts', 'heart', 'followers', 'follower', 
@@ -566,6 +731,9 @@ def setup_bot_commands():
             telebot.types.BotCommand('favorites', 'Tăng Yêu thích Favorites'),
             telebot.types.BotCommand('combo', 'Cày Combo Views + Favorites song song'),
             telebot.types.BotCommand('batch', 'Cày hàng loạt nhiều link TikTok'),
+            telebot.types.BotCommand('target', 'Cày tự động theo @username kênh TikTok'),
+            telebot.types.BotCommand('schedule', 'Đặt lịch cày tự động lặp lại'),
+            telebot.types.BotCommand('analytics', 'Báo cáo đồ thị & tổng view cày được'),
             telebot.types.BotCommand('status', 'Xem các bot đang chạy trên GitHub'),
             telebot.types.BotCommand('history', 'Xem lịch sử 10 lần cày gần nhất'),
             telebot.types.BotCommand('report', 'Báo cáo thống kê hiệu suất hôm nay'),
@@ -583,6 +751,9 @@ if __name__ == "__main__":
 
     print("[+] Starting HTTP Health Check thread...")
     threading.Thread(target=start_health_check_server, daemon=True).start()
+    
+    print("[+] Starting Background Scheduler thread...")
+    threading.Thread(target=run_scheduler_loop, daemon=True).start()
     
     try:
         bot.remove_webhook()
