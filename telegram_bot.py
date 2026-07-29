@@ -831,6 +831,9 @@ def handle_all_messages(message):
         elif cmd_name in ['/stop', '/cancel', '/dung']:
             cancel_github_actions(message)
             return
+        elif cmd_name in ['/makevideo', '/video']:
+            handle_make_video(message)
+            return
 
     duration, tiktok_url = parse_duration_and_url(text)
     if tiktok_url:
