@@ -781,19 +781,38 @@ def handle_make_video(message):
     topic = parts[1].strip()
     status_msg = safe_send_message(
         message.chat.id,
-        f"🎬 <b>ĐANG KHỞI TẠO AI VIDEO GENERATOR...</b>\n\n"
-        f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n"
-        f"⏳ <i>Vui lòng đợi khoảng 30-45 giây để AI sinh kịch bản, đọc giọng nói và render video HD...</i>",
+        f"🎬 <b>TIẾN TRÌNH TẠO VIDEO AI TIKTOK</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n\n"
+        f"⏳ <b>Tiến độ:</b> [1/4] 🧠 Đang viết kịch bản AI...\n"
+        f"<i>Vui lòng chờ khoảng 30-45 giây...</i>",
         reply_to_message_id=message.message_id
     )
+
+    def update_telegram_status(step_str, detail_msg):
+        if status_msg:
+            try:
+                bot.edit_message_text(
+                    f"🎬 <b>TIẾN TRÌNH TẠO VIDEO AI TIKTOK</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n\n"
+                    f"⏳ <b>Tiến độ:</b> [{step_str}] {detail_msg}\n"
+                    f"<i>Đang xử lý, vui lòng chờ trong giây lát...</i>",
+                    chat_id=message.chat.id,
+                    message_id=status_msg.message_id,
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
 
     def process_video_generation():
         try:
             from ai_video_generator import render_tiktok_video
             output_file = f"tiktok_ai_{int(time.time())}.mp4"
-            render_tiktok_video(topic, output_file)
+            render_tiktok_video(topic, output_file, status_callback=update_telegram_status)
             
             if os.path.exists(output_file):
+                update_telegram_status("4/4", "✅ Đã render xong! Đang tải video lên...")
                 with open(output_file, 'rb') as video:
                     bot.send_video(
                         message.chat.id,

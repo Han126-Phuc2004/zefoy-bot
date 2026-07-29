@@ -237,17 +237,23 @@ def create_video_frame(script_data: dict, width: int = 1080, height: int = 1920)
         
     return np.array(img)
 
-def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4") -> str:
+def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", status_callback=None) -> str:
     """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu tốc."""
     print(f"\n[AI Video Generator] Bat dau tu dong tao video cho chu de: '{topic}'...")
     
+    if status_callback:
+        status_callback("1/4", "🧠 Đang viết kịch bản AI...")
+        
     # 1. Sinh kịch bản
     script_data = generate_tiktok_script(topic)
     full_speech = f"{script_data['hook']} { ' '.join(script_data['facts']) } {script_data['call_to_action']}"
     print(f"[Kich ban AI]:\n- Hook: {script_data['hook']}\n- So y: {len(script_data['facts'])}")
     
+    if status_callback:
+        status_callback("2/4", "🎙️ Đang sinh giọng đọc AI (EverAI/Edge-TTS)...")
+
     # 2. Sinh âm thanh TTS
-    temp_audio = "temp_voice.mp3"
+    temp_audio = f"temp_voice_{int(time.time())}.mp3"
     generate_voiceover(full_speech, temp_audio)
     
     if not os.path.exists(temp_audio):
@@ -256,9 +262,15 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4") 
     audio_clip = AudioFileClip(temp_audio)
     duration = audio_clip.duration
     
+    if status_callback:
+        status_callback("3/4", f"🎨 Đang vẽ khung hình HD 9:16 ({duration:.1f}s)...")
+
     # 3. Render Khung ảnh qua Pillow
     frame_np = create_video_frame(script_data, width=1080, height=1920)
     
+    if status_callback:
+        status_callback("4/4", f"⚡ Đang render xuất file MP4 HD...")
+
     # 4. Ghép ảnh + âm thanh thành Video MP4
     video_clip = ImageClip(frame_np).with_duration(duration)
     video_clip = video_clip.with_audio(audio_clip)
