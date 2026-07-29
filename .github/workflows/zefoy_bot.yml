@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        worker: [1, 2]
+        worker: [1, 2, 3, 4]
       fail-fast: false
     timeout-minutes: 350
 
@@ -38,11 +38,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: ⏱ Stagger delay for Worker 2
+      - name: ⏱ Stagger delay for Workers
         run: |
-          if [ "${{ matrix.worker }}" -eq "2" ]; then
-            echo "⏱ Worker 2: Đang tạm hoãn 60 giây để cày gối đầu đan xen với Worker 1..."
-            sleep 60
+          DELAY=$(( (${{ matrix.worker }} - 1) * 30 ))
+          if [ "$DELAY" -gt "0" ]; then
+            echo "⏱ Worker ${{ matrix.worker }}: Đang hoãn ${DELAY}s cày gối đầu đan xen..."
+            sleep $DELAY
           fi
 
       - name: 🌐 Install Chrome
@@ -54,7 +55,7 @@ jobs:
       - name: 📦 Install dependencies
         run: |
           pip install --upgrade pip
-          pip install selenium webdriver-manager openai python-dotenv requests Pillow
+          pip install selenium webdriver-manager openai python-dotenv requests Pillow curl_cffi
 
       - name: 🤖 Run Zefoy Bot
         env:
@@ -68,7 +69,7 @@ jobs:
           ZEFOY_URL: ${{ github.event.inputs.tiktok_url || github.event.client_payload.tiktok_url || secrets.ZEFOY_DEFAULT_URL }}
           BOT_DURATION: ${{ github.event.inputs.duration_minutes || github.event.client_payload.duration_minutes || '60' }}
         run: |
-          echo "🚀 Bắt đầu Zefoy Bot (Worker ${{ matrix.worker }})..."
+          echo "🚀 Bắt đầu Siêu Bot Curl-Cffi Engine (Worker ${{ matrix.worker }})..."
           echo "   Dịch vụ: $ZEFOY_SERVICE"
           echo "   URL: $ZEFOY_URL"
           echo "   Thời gian chạy: ${BOT_DURATION} phút"
@@ -82,6 +83,8 @@ jobs:
           TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
           EOF
           
+          timeout ${BOT_DURATION}m python zefoy_curl.py "$ZEFOY_URL" "$ZEFOY_SERVICE" "$BOT_DURATION" || \
           timeout ${BOT_DURATION}m python zefoy_headless.py \
             --service "$ZEFOY_SERVICE" \
-            --url "$ZEFOY_URL" || echo "✅ Bot đã chạy xong (timeout hoặc hoàn tất)."
+            --url "$ZEFOY_URL" \
+            --duration "$BOT_DURATION" || echo "✅ Bot đã chạy xong (timeout hoặc hoàn tất)."
