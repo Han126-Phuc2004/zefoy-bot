@@ -12,6 +12,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     except Exception:
         pass
 import time
+import gc
 import json
 import random
 import asyncio
