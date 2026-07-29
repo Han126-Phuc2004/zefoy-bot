@@ -14,3 +14,7 @@ services:
         value: Han126-Phuc2004/zefoy-bot
       - key: ALLOWED_USERS
         value: "2042486952,nhkaoud"
+      - key: EVERAI_API_KEY
+        sync: false
+      - key: EVERAI_VOICE_CODE
+        value: "vi_female_kieunhi_mn"
