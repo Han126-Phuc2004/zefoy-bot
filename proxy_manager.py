@@ -36,29 +36,8 @@ def fetch_all_free_proxies():
     return proxy_list
 
 def get_working_proxy(max_checks=25, test_url="https://zefoy.com"):
-    """Tự động quét test nhanh các Free Proxies để chọn IP hoạt động tốt (200 OK)."""
-    proxies = fetch_all_free_proxies()
-    if not proxies:
-        print("[!] Khong lay duoc proxy, su dung Direct IP mac dinh.")
-        return None
-
-    print(f"[*] [Proxy Manager] Dang test toc do ngau nhien {max_checks} Free Proxies...")
-    for p in proxies[:max_checks]:
-        proxy_url = f"http://{p}"
-        try:
-            r = requests.get(
-                test_url, 
-                proxies={"http": proxy_url, "https": proxy_url}, 
-                timeout=4, 
-                impersonate="chrome120"
-            )
-            if r.status_code == 200:
-                print(f"[+] [Proxy Manager] TIM THAY PROXY SONG SAN SANG: {p}")
-                return p
-        except Exception:
-            pass
-
-    print("[!] Khong tim thay Free Proxy dat phan hoi duoi 4s, su dung Direct IP.")
+    """Dùng Direct IP (đã tắt xoay Proxy theo yêu cầu)."""
+    print("[+] [Proxy Manager] Da TAT Proxy, dang su dung Direct IP.")
     return None
 
 if __name__ == "__main__":
