@@ -714,7 +714,7 @@ def handle_service(message):
         return
 
     text = message.text.strip()
-    duration, tiktok_url = parse_duration_and_url(text)
+    duration, _ = parse_duration_and_url(text)
     
     parts = text.split(maxsplit=2)
     cmd = parts[0].lower().split('@')[0]
@@ -727,22 +727,36 @@ def handle_service(message):
     else:
         service_id = SERVICE_COMMAND_MAP.get(cmd, '4')
 
-    if not tiktok_url:
+    # Trích xuất tất cả các link TikTok có trong tin nhắn
+    urls = []
+    for word in text.split():
+        u = extract_tiktok_url(word)
+        if u and u not in urls:
+            urls.append(u)
+
+    if not urls:
         service_name = SERVICES.get(service_id, "Views")
         safe_send_message(
             message.chat.id,
             f"⚠️ <b>Thiếu link TikTok hợp lệ!</b>\n\n"
             f"📌 <b>Cú pháp đúng:</b>\n"
             f"<code>{html.escape(cmd)} [số_phút] https://vt.tiktok.com/ZSxxxxxx/</code>\n\n"
-            f"✅ <b>Ví dụ:</b>\n"
-            f"<code>{html.escape(cmd)} 180 https://vt.tiktok.com/ZS48b1NEy/</code>\n\n"
-            f"❌ Lệnh bạn vừa gõ không có link TikTok (https://...) — "
-            f"hãy copy link video TikTok và dán vào sau số phút!",
+            f"✅ <b>Có thể gửi 1 hoặc nhiều link cùng lúc!</b>",
             reply_to_message_id=message.message_id
         )
         return
 
-    trigger_github_action(message.chat.id, service_id, tiktok_url, duration_minutes=duration, reply_to_msg_id=message.message_id)
+    if len(urls) > 1:
+        safe_send_message(
+            message.chat.id, 
+            f"🚀 <b>Phát hiện {len(urls)} link TikTok!</b>\nĐang khởi tạo các tác vụ cày song song (thời gian: {duration} phút)...", 
+            reply_to_message_id=message.message_id
+        )
+
+    for u in urls:
+        trigger_github_action(message.chat.id, service_id, u, duration_minutes=duration, reply_to_msg_id=message.message_id if len(urls) == 1 else None)
+        if len(urls) > 1:
+            time.sleep(1.5)
 
 @bot.message_handler(func=lambda m: True)
 def handle_all_messages(message):
