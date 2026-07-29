@@ -822,7 +822,6 @@ def setup_bot_commands():
             telebot.types.BotCommand('batch', 'Cày hàng loạt nhiều link TikTok'),
             telebot.types.BotCommand('target', 'Cày tự động theo @username kênh TikTok'),
             telebot.types.BotCommand('schedule', 'Đặt lịch cày tự động lặp lại'),
-            telebot.types.BotCommand('makevideo', 'Tạo Video TikTok AI tự động từ chủ đề'),
             telebot.types.BotCommand('analytics', 'Báo cáo đồ thị & tổng view cày được'),
             telebot.types.BotCommand('status', 'Xem các bot đang chạy trên GitHub'),
             telebot.types.BotCommand('history', 'Xem lịch sử 10 lần cày gần nhất'),
