@@ -763,80 +763,6 @@ def handle_service(message):
         if len(urls) > 1:
             time.sleep(1.5)
 
-@bot.message_handler(commands=['makevideo', 'video'])
-def handle_make_video(message):
-    if not is_user_allowed(message.from_user):
-        safe_send_message(message.chat.id, "❌ Bạn không có quyền sử dụng bot này.", reply_to_message_id=message.message_id)
-        return
-        
-    parts = message.text.strip().split(maxsplit=1)
-    if len(parts) < 2:
-        safe_send_message(
-            message.chat.id,
-            "💡 <b>HƯỚNG DẪN TẠO VIDEO AI TỰ ĐỘNG (9:16 TIKTOK)</b>\n\n"
-            "Cú pháp: <code>/makevideo [Chủ đề video]</code>\n\n"
-            "Ví dụ:\n"
-            "• <code>/makevideo Top 5 sự thật kỳ lạ về vũ trụ</code>\n"
-            "• <code>/makevideo 3 bài học đắt giá về tài chính</code>\n\n"
-            "🤖 <i>AI sẽ tự động viết kịch bản, đọc giọng nói & render Video MP4 gửi lại cho bạn!</i>",
-            reply_to_message_id=message.message_id
-        )
-        return
-
-    topic = parts[1].strip()
-    status_msg = safe_send_message(
-        message.chat.id,
-        f"🎬 <b>TIẾN TRÌNH TẠO VIDEO AI TIKTOK</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n\n"
-        f"⏳ <b>Tiến độ:</b> [1/4] 🧠 Đang viết kịch bản AI...\n"
-        f"<i>Vui lòng chờ khoảng 30-45 giây...</i>",
-        reply_to_message_id=message.message_id
-    )
-
-    def update_telegram_status(step_str, detail_msg):
-        if status_msg:
-            try:
-                bot.edit_message_text(
-                    f"🎬 <b>TIẾN TRÌNH TẠO VIDEO AI TIKTOK</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n\n"
-                    f"⏳ <b>Tiến độ:</b> [{step_str}] {detail_msg}\n"
-                    f"<i>Đang xử lý, vui lòng chờ trong giây lát...</i>",
-                    chat_id=message.chat.id,
-                    message_id=status_msg.message_id,
-                    parse_mode="HTML"
-                )
-            except Exception:
-                pass
-
-    def process_video_generation():
-        try:
-            from ai_video_generator import render_tiktok_video
-            output_file = f"tiktok_ai_{int(time.time())}.mp4"
-            render_tiktok_video(topic, output_file, status_callback=update_telegram_status)
-            
-            if os.path.exists(output_file):
-                update_telegram_status("4/4", "✅ Đã render xong! Đang tải video lên...")
-                with open(output_file, 'rb') as video:
-                    bot.send_video(
-                        message.chat.id,
-                        video,
-                        caption=f"🎉 <b>ĐÃ TẠO XONG VIDEO TIKTOK AI!</b>\n\n📌 <b>Chủ đề:</b> {html.escape(topic)}\n✨ <i>Sẵn sàng đăng TikTok / Shorts / Reels!</i>",
-                        parse_mode="HTML",
-                        reply_to_message_id=message.message_id
-                    )
-                try:
-                    os.remove(output_file)
-                except Exception:
-                    pass
-            else:
-                safe_send_message(message.chat.id, "❌ Không thể tạo video.", reply_to_message_id=message.message_id)
-        except Exception as e:
-            safe_send_message(message.chat.id, f"❌ Lỗi tạo video AI: {html.escape(str(e))}", reply_to_message_id=message.message_id)
-
-    threading.Thread(target=process_video_generation, daemon=True).start()
-
 @bot.message_handler(func=lambda m: True)
 def handle_all_messages(message):
     if not message or not message.text:
@@ -854,9 +780,6 @@ def handle_all_messages(message):
             return
         elif cmd_name in ['/stop', '/cancel', '/dung']:
             cancel_github_actions(message)
-            return
-        elif cmd_name in ['/makevideo', '/video']:
-            handle_make_video(message)
             return
 
     duration, tiktok_url = parse_duration_and_url(text)
