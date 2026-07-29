@@ -828,6 +828,21 @@ def setup_bot_commands():
     except Exception as e:
         print(f"[!] Warning set_my_commands error: {e}")
 
+def keep_alive_ping_loop():
+    """Vòng lặp tự động Self-Ping để Render duy trì trạng thái 100% Online 24/7 (Không bị ngủ sau 15p)."""
+    port = int(os.getenv("PORT", 10000))
+    render_url = os.getenv("RENDER_EXTERNAL_URL", f"http://127.0.0.1:{port}/")
+    print(f"[+] [Keep-Alive Engine] Khởi động tự động duy trì Render 24/7 (Self-ping mỗi 3 phút)...")
+    while True:
+        try:
+            time.sleep(180)
+            requests.get(f"http://127.0.0.1:{port}/", timeout=5)
+            if "onrender.com" in render_url:
+                requests.get(render_url, timeout=5)
+            print("[+] [Keep-Alive] Self-ping thành công! Bot duy trì 24/7.")
+        except Exception:
+            pass
+
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "DUMMY_TOKEN":
         print("[❌] ERROR: TELEGRAM_BOT_TOKEN is missing in .env file!")
@@ -835,10 +850,13 @@ if __name__ == "__main__":
 
     print("[+] Starting HTTP Health Check thread...")
     threading.Thread(target=start_health_check_server, daemon=True).start()
-    
+
+    print("[+] Starting Keep-Alive Self-Ping thread (Anti-sleep 24/7)...")
+    threading.Thread(target=keep_alive_ping_loop, daemon=True).start()
+
     print("[+] Starting Background Scheduler thread...")
     threading.Thread(target=run_scheduler_loop, daemon=True).start()
-    
+
     try:
         bot.remove_webhook()
         setup_bot_commands()
