@@ -288,6 +288,7 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     cmd = [
         ffmpeg_exe, "-y",
         "-loop", "1",
+        "-framerate", "1",
         "-i", temp_img,
         "-i", temp_audio,
         "-t", f"{duration:.2f}",
@@ -295,8 +296,9 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
         "-preset", "ultrafast",
         "-tune", "stillimage",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-pix_fmt", "yuv420p",
+        "-r", "1",
         output_mp4_path
     ]
     print(f"[Direct FFmpeg Engine] Executing render command ({duration:.1f}s)...")
@@ -305,7 +307,7 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        timeout=30
+        timeout=120
     )
     
     if os.path.exists(temp_img):
