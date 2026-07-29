@@ -535,6 +535,34 @@ def save_schedules(schedules):
     except Exception as e:
         print(f"[!] Save schedules error: {e}")
 
+def get_tiktok_user_latest_videos(username, limit=1):
+    """Lấy danh sách N video mới nhất từ TikTok user profile."""
+    clean_user = username.replace('@', '').strip()
+    url = f"https://www.tiktok.com/@{clean_user}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+    videos = []
+    try:
+        res = requests.get(url, headers=headers, timeout=8)
+        if res.status_code == 200:
+            found = re.findall(r'https://www\.tiktok\.com/@[\w\.\-]+/video/(\d+)', res.text)
+            if not found:
+                found = re.findall(r'/video/(\d+)', res.text)
+            for vid in found:
+                v_url = f"https://www.tiktok.com/@{clean_user}/video/{vid}"
+                if v_url not in videos:
+                    videos.append(v_url)
+                if len(videos) >= limit:
+                    break
+    except Exception as e:
+        print(f"[!] Scrape user videos error: {e}")
+    
+    if not videos:
+        videos = [url]
+    return videos
+
 @bot.message_handler(commands=['target'])
 def handle_target(message):
     if not is_user_allowed(message.from_user):
@@ -542,31 +570,46 @@ def handle_target(message):
         return
 
     text = message.text.strip()
-    parts = text.split(maxsplit=1)
+    parts = text.split(maxsplit=2)
     if len(parts) < 2:
         safe_send_message(
             message.chat.id, 
-            "⚠️ <b>Cú pháp:</b> <code>/target @username_hoặc_link</code>\n\n"
-            "Ví dụ: <code>/target @nhkaoud</code>", 
+            "⚠️ <b>Cú pháp:</b> <code>/target [số_video] @username_hoặc_link</code>\n\n"
+            "Ví dụ:\n"
+            "• <code>/target @nhkaoud</code> (Cày 1 video mới nhất)\n"
+            "• <code>/target 3 @nhkaoud</code> (Cày 3 video mới nhất cùng lúc)", 
             reply_to_message_id=message.message_id
         )
         return
 
+    video_count = 1
     target_input = parts[1].strip()
+    
+    if len(parts) >= 3 and parts[1].isdigit():
+        video_count = int(parts[1])
+        target_input = parts[2].strip()
+    elif parts[1].isdigit():
+        video_count = int(parts[1])
+
     duration, tiktok_url = parse_duration_and_url(target_input)
-    if not tiktok_url:
-        # Nếu user truyền @username
+    
+    if tiktok_url and not target_input.startswith('@'):
+        target_urls = [tiktok_url]
+    else:
         username = target_input.replace('@', '').strip()
-        tiktok_url = f"https://www.tiktok.com/@{username}"
+        safe_send_message(message.chat.id, f"🔍 Đang quét <b>{video_count} video mới nhất</b> của kênh <code>@{username}</code>...", reply_to_message_id=message.message_id)
+        target_urls = get_tiktok_user_latest_videos(username, limit=video_count)
 
     safe_send_message(
         message.chat.id, 
-        f"🎯 <b>Đã cài đặt Target cày tự động cho Kênh/Link:</b> <code>{html.escape(tiktok_url)}</code>\n"
+        f"🎯 <b>Đã cài đặt Target cày tự động cho {len(target_urls)} video:</b>\n"
+        + "\n".join([f"• <code>{u}</code>" for u in target_urls]) + "\n\n"
         f"🚀 Đang khởi tạo dàn Máy chủ Matrix cày gối đầu...", 
         reply_to_message_id=message.message_id
     )
 
-    trigger_github_action(message.chat.id, "4", tiktok_url, duration_minutes=duration, reply_to_msg_id=message.message_id)
+    for url in target_urls:
+        trigger_github_action(message.chat.id, "4", url, duration_minutes=duration)
 
 @bot.message_handler(commands=['schedule', 'datlich'])
 def handle_schedule(message):
