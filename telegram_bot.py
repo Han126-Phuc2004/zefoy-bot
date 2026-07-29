@@ -758,6 +758,61 @@ def handle_service(message):
         if len(urls) > 1:
             time.sleep(1.5)
 
+@bot.message_handler(commands=['makevideo', 'video'])
+def handle_make_video(message):
+    if not is_user_allowed(message.from_user):
+        safe_send_message(message.chat.id, "❌ Bạn không có quyền sử dụng bot này.", reply_to_message_id=message.message_id)
+        return
+        
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2:
+        safe_send_message(
+            message.chat.id,
+            "💡 <b>HƯỚNG DẪN TẠO VIDEO AI TỰ ĐỘNG (9:16 TIKTOK)</b>\n\n"
+            "Cú pháp: <code>/makevideo [Chủ đề video]</code>\n\n"
+            "Ví dụ:\n"
+            "• <code>/makevideo Top 5 sự thật kỳ lạ về vũ trụ</code>\n"
+            "• <code>/makevideo 3 bài học đắt giá về tài chính</code>\n\n"
+            "🤖 <i>AI sẽ tự động viết kịch bản, đọc giọng nói & render Video MP4 gửi lại cho bạn!</i>",
+            reply_to_message_id=message.message_id
+        )
+        return
+
+    topic = parts[1].strip()
+    status_msg = safe_send_message(
+        message.chat.id,
+        f"🎬 <b>ĐANG KHỞI TẠO AI VIDEO GENERATOR...</b>\n\n"
+        f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n"
+        f"⏳ <i>Vui lòng đợi khoảng 30-45 giây để AI sinh kịch bản, đọc giọng nói và render video HD...</i>",
+        reply_to_message_id=message.message_id
+    )
+
+    def process_video_generation():
+        try:
+            from ai_video_generator import render_tiktok_video
+            output_file = f"tiktok_ai_{int(time.time())}.mp4"
+            render_tiktok_video(topic, output_file)
+            
+            if os.path.exists(output_file):
+                with open(output_file, 'rb') as video:
+                    bot.send_video(
+                        message.chat.id,
+                        video,
+                        caption=f"🎉 <b>ĐÃ TẠO XONG VIDEO TIKTOK AI!</b>\n\n📌 <b>Chủ đề:</b> {html.escape(topic)}\n✨ <i>Sẵn sàng đăng TikTok / Shorts / Reels!</i>",
+                        parse_mode="HTML",
+                        reply_to_message_id=message.message_id
+                    )
+                try:
+                    os.remove(output_file)
+                except Exception:
+                    pass
+            else:
+                safe_send_message(message.chat.id, "❌ Không thể tạo video.", reply_to_message_id=message.message_id)
+        except Exception as e:
+            safe_send_message(message.chat.id, f"❌ Lỗi tạo video AI: {html.escape(str(e))}", reply_to_message_id=message.message_id)
+
+    threading.Thread(target=process_video_generation, daemon=True).start()
+
 @bot.message_handler(func=lambda m: True)
 def handle_all_messages(message):
     if not message or not message.text:
@@ -828,61 +883,6 @@ def setup_bot_commands():
         print("[+] Registered Bot Commands Menu in Telegram UI.")
     except Exception as e:
         print(f"[!] Warning set_my_commands error: {e}")
-
-@bot.message_handler(commands=['makevideo', 'video'])
-def handle_make_video(message):
-    if not is_user_allowed(message.from_user):
-        safe_send_message(message.chat.id, "❌ Bạn không có quyền sử dụng bot này.", reply_to_message_id=message.message_id)
-        return
-        
-    parts = message.text.strip().split(maxsplit=1)
-    if len(parts) < 2:
-        safe_send_message(
-            message.chat.id,
-            "💡 <b>HƯỚNG DẪN TẠO VIDEO AI TỰ ĐỘNG (9:16 TIKTOK)</b>\n\n"
-            "Cú pháp: <code>/makevideo [Chủ đề video]</code>\n\n"
-            "Ví dụ:\n"
-            "• <code>/makevideo Top 5 sự thật kỳ lạ về vũ trụ</code>\n"
-            "• <code>/makevideo 3 bài học đắt giá về tài chính</code>\n\n"
-            "🤖 <i>AI sẽ tự động viết kịch bản, đọc giọng nói & render Video MP4 gửi lại cho bạn!</i>",
-            reply_to_message_id=message.message_id
-        )
-        return
-
-    topic = parts[1].strip()
-    status_msg = safe_send_message(
-        message.chat.id,
-        f"🎬 <b>ĐANG KHỞI TẠO AI VIDEO GENERATOR...</b>\n\n"
-        f"📌 <b>Chủ đề:</b> <i>{html.escape(topic)}</i>\n"
-        f"⏳ <i>Vui lòng đợi khoảng 30-45 giây để AI sinh kịch bản, đọc giọng nói và render video HD...</i>",
-        reply_to_message_id=message.message_id
-    )
-
-    def process_video_generation():
-        try:
-            from ai_video_generator import render_tiktok_video
-            output_file = f"tiktok_ai_{int(time.time())}.mp4"
-            render_tiktok_video(topic, output_file)
-            
-            if os.path.exists(output_file):
-                with open(output_file, 'rb') as video:
-                    bot.send_video(
-                        message.chat.id,
-                        video,
-                        caption=f"🎉 <b>ĐÃ TẠO XONG VIDEO TIKTOK AI!</b>\n\n📌 <b>Chủ đề:</b> {html.escape(topic)}\n✨ <i>Sẵn sàng đăng TikTok / Shorts / Reels!</i>",
-                        parse_mode="HTML",
-                        reply_to_message_id=message.message_id
-                    )
-                try:
-                    os.remove(output_file)
-                except Exception:
-                    pass
-            else:
-                safe_send_message(message.chat.id, "❌ Không thể tạo video.", reply_to_message_id=message.message_id)
-        except Exception as e:
-            safe_send_message(message.chat.id, f"❌ Lỗi tạo video AI: {html.escape(str(e))}", reply_to_message_id=message.message_id)
-
-    threading.Thread(target=process_video_generation, daemon=True).start()
 
 def keep_alive_ping_loop():
     """Vòng lặp tự động Self-Ping để Render duy trì trạng thái 100% Online 24/7 (Không bị ngủ sau 15p)."""
