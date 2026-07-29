@@ -90,6 +90,7 @@ def generate_everai_tts(text: str, output_path: str, voice_code: str = "vi_femal
         "Content-Type": "application/json"
     }
     payload = {
+        "input_text": text,
         "text": text,
         "voice_code": voice_code,
         "audio_type": "mp3",
@@ -106,8 +107,12 @@ def generate_everai_tts(text: str, output_path: str, voice_code: str = "vi_femal
                 return True
 
             data = res.json()
-            audio_url = data.get("audio_link") or data.get("result", {}).get("audio_link")
-            request_id = data.get("result", {}).get("request_id") or data.get("request_id")
+            if data.get("error_code") and data.get("error_code") != 0:
+                print(f"[!] EverAI Notice: {data.get('error_message')}")
+                return False
+
+            audio_url = data.get("audio_link") or (data.get("result") or {}).get("audio_link")
+            request_id = (data.get("result") or {}).get("request_id") or data.get("request_id")
             
             if not audio_url and request_id:
                 for _ in range(12):
