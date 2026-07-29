@@ -64,5 +64,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 4. Copy mã nguồn
 COPY . .
 
-# 5. Chạy bot
-CMD ["python", "zefoy_headless.py"]
+# 5. Chạy Telegram Bot Controller trên Render
+CMD ["python", "telegram_bot.py"]

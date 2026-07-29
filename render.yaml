@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: zefoy-telegram-bot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GITHUB_PAT
+        sync: false
+      - key: GITHUB_REPO
+        value: Han126-Phuc2004/zefoy-bot
+      - key: ALLOWED_USERS
+        value: "2042486952,nhkaoud"

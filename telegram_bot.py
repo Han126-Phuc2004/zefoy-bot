@@ -217,9 +217,15 @@ def handle_combo(message):
         return
 
     text = message.text.strip()
-    duration, tiktok_url = parse_duration_and_url(text)
+    duration, _ = parse_duration_and_url(text)
     
-    if not tiktok_url:
+    urls = []
+    for line in text.split():
+        u = extract_tiktok_url(line)
+        if u and u not in urls:
+            urls.append(u)
+
+    if not urls:
         safe_send_message(
             message.chat.id, 
             "⚠️ <b>Cú pháp:</b> <code>/combo [thời_gian_phút] &lt;link_tiktok&gt;</code>\n"
@@ -231,16 +237,17 @@ def handle_combo(message):
 
     safe_send_message(
         message.chat.id, 
-        f"🔥 <b>Khởi chạy Combo Tương tác Đa dịch vụ!</b>\n"
-        f"🔗 Link: {html.escape(tiktok_url)}\n"
-        f"⏱ Thời gian: <code>{duration} phút</code>\n"
-        f"⚡ Đang khởi tạo 2 bot song song: <b>Views + Favorites</b>...",
+        f"🔥 <b>Khởi chạy Combo Tương tác Đa dịch vụ cho {len(urls)} link!</b>\n"
+        f"⏱ Thời gian: <code>{duration} phút/tác vụ</code>\n"
+        f"⚡ Đang khởi tạo 2 bot song song (Views + Favorites) cho mỗi link...",
         reply_to_message_id=message.message_id
     )
     
-    trigger_github_action(message.chat.id, "4", tiktok_url, duration_minutes=duration)
-    time.sleep(1.5)
-    trigger_github_action(message.chat.id, "6", tiktok_url, duration_minutes=duration)
+    for u in urls:
+        trigger_github_action(message.chat.id, "4", u, duration_minutes=duration)
+        time.sleep(1.5)
+        trigger_github_action(message.chat.id, "6", u, duration_minutes=duration)
+        time.sleep(1.5)
 
 @bot.message_handler(commands=['batch'])
 def handle_batch(message):
@@ -456,7 +463,8 @@ def handle_report(message):
             runs_today = [r for r in runs if r.get("created_at", "").startswith(today_str)]
             
             successful_runs = [r for r in runs_today if r.get("conclusion") == "success"]
-            running_runs = [r for r in runs_today if r.get("status") == "in_progress"]
+            running_runs = [r for r in runs_today if r.get("status") in ["in_progress", "queued"]]
+            cancelled_runs = [r for r in runs_today if r.get("conclusion") == "cancelled"]
             report_msg = (
                 f"📊 <b>BÁO CÁO THỐNG KÊ TỔNG QUAN HÔM NAY ({today_str})</b>\n\n"
                 f"🚀 <b>Tổng số lượt chạy:</b> {len(runs_today)}\n"
@@ -808,7 +816,7 @@ if __name__ == "__main__":
     print("[+] Starting Telegram Bot PRO Listener (Infinity Polling)...")
     while True:
         try:
-            bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
+            bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=False)
         except Exception as e:
             print(f"[!] Exception during polling: {e}. Retrying in 5 seconds...")
             time.sleep(5)
