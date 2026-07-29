@@ -175,76 +175,71 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: Ima
         lines.append(" ".join(current_line))
     return lines
 
-def create_video_frame(script_data: dict, width: int = 1080, height: int = 1920) -> np.ndarray:
-    """Vẽ 1 khung ảnh đẹp chuẩn HD 9:16 dùng Pillow (Nền Dark Gradient + Card Phụ Đề + Title Vàng)."""
-    # 1. Tạo phông nền Gradient Tối (Dark Slate Blue)
+import gc
+
+def create_video_frame(script_data: dict, width: int = 540, height: int = 960) -> np.ndarray:
+    """Vẽ 1 khung ảnh đẹp chuẩn HD 9:16 dùng Pillow (Nền Dark Gradient + Card Phụ Đề + Title Vàng). Optimised for 512MB RAM."""
     img = Image.new("RGB", (width, height), color=(15, 23, 42))
     draw = ImageDraw.Draw(img)
     
-    # 2. Thử load Font hệ thống hoặc dùng default
     try:
-        font_title = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", 60)
-        font_body = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 44)
+        font_title = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", 30)
+        font_body = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 22)
     except Exception:
         font_title = ImageFont.load_default()
         font_body = ImageFont.load_default()
         
-    # 3. Vẽ Tiêu đề (Header Card Vàng)
     title_text = script_data['title'].upper()
-    title_lines = wrap_text(title_text, font_title, width - 160, draw)
+    title_lines = wrap_text(title_text, font_title, width - 80, draw)
     
-    y_cursor = 220
-    # Card chứa tiêu đề
+    y_cursor = 110
     card_bg = (30, 41, 59)
-    draw.rounded_rectangle([60, y_cursor - 20, width - 60, y_cursor + len(title_lines) * 80 + 20], radius=20, fill=card_bg, outline=(234, 179, 8), width=3)
+    draw.rounded_rectangle([30, y_cursor - 10, width - 30, y_cursor + len(title_lines) * 40 + 10], radius=10, fill=card_bg, outline=(234, 179, 8), width=2)
     
     for line in title_lines:
         bbox = draw.textbbox((0, 0), line, font=font_title)
         w = bbox[2] - bbox[0]
         x = (width - w) // 2
-        draw.text((x, y_cursor), line, font=font_title, fill=(234, 179, 8)) # Màu vàng gold
-        y_cursor += 80
+        draw.text((x, y_cursor), line, font=font_title, fill=(234, 179, 8))
+        y_cursor += 40
         
-    # 4. Vẽ Nội dung Kịch bản (Body Text Card)
-    y_cursor += 80
+    y_cursor += 40
     body_lines = []
-    body_lines.extend(wrap_text(f"🔥 {script_data['hook']}", font_body, width - 200, draw))
+    body_lines.extend(wrap_text(f"🔥 {script_data['hook']}", font_body, width - 100, draw))
     body_lines.append("")
     for i, fact in enumerate(script_data['facts'], 1):
-        body_lines.extend(wrap_text(f"✨ Điều {i}: {fact}", font_body, width - 200, draw))
+        body_lines.extend(wrap_text(f"✨ Điều {i}: {fact}", font_body, width - 100, draw))
         body_lines.append("")
-    body_lines.extend(wrap_text(f"👉 {script_data['call_to_action']}", font_body, width - 200, draw))
+    body_lines.extend(wrap_text(f"👉 {script_data['call_to_action']}", font_body, width - 100, draw))
     
-    # Card trắng đục mờ cho nội dung
-    card_top = y_cursor - 30
-    card_bottom = min(height - 150, y_cursor + len(body_lines) * 55 + 40)
-    draw.rounded_rectangle([70, card_top, width - 70, card_bottom], radius=25, fill=(30, 41, 59))
+    card_top = y_cursor - 15
+    card_bottom = min(height - 75, y_cursor + len(body_lines) * 28 + 20)
+    draw.rounded_rectangle([35, card_top, width - 35, card_bottom], radius=12, fill=(30, 41, 59))
     
     for line in body_lines:
         if not line:
-            y_cursor += 25
+            y_cursor += 12
             continue
         bbox = draw.textbbox((0, 0), line, font=font_body)
         w = bbox[2] - bbox[0]
         x = (width - w) // 2
-        fill_color = (255, 255, 255) # Trắng
+        fill_color = (255, 255, 255)
         if "🔥" in line:
-            fill_color = (56, 189, 248) # Xanh nhạt cho Hook
+            fill_color = (56, 189, 248)
         elif "👉" in line:
-            fill_color = (74, 222, 128) # Xanh lá cho CTA
+            fill_color = (74, 222, 128)
         draw.text((x, y_cursor), line, font=font_body, fill=fill_color)
-        y_cursor += 55
+        y_cursor += 28
         
     return np.array(img)
 
 def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", status_callback=None) -> str:
-    """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu tốc."""
+    """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu tốc (RAM Friendly)."""
     print(f"\n[AI Video Generator] Bat dau tu dong tao video cho chu de: '{topic}'...")
     
     if status_callback:
         status_callback("1/4", "🧠 Đang viết kịch bản AI...")
         
-    # 1. Sinh kịch bản
     script_data = generate_tiktok_script(topic)
     full_speech = f"{script_data['hook']} { ' '.join(script_data['facts']) } {script_data['call_to_action']}"
     print(f"[Kich ban AI]:\n- Hook: {script_data['hook']}\n- So y: {len(script_data['facts'])}")
@@ -252,7 +247,6 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     if status_callback:
         status_callback("2/4", "🎙️ Đang sinh giọng đọc AI (EverAI/Edge-TTS)...")
 
-    # 2. Sinh âm thanh TTS
     temp_audio = f"temp_voice_{int(time.time())}.mp3"
     generate_voiceover(full_speech, temp_audio)
     
@@ -265,31 +259,31 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     if status_callback:
         status_callback("3/4", f"🎨 Đang vẽ khung hình HD 9:16 ({duration:.1f}s)...")
 
-    # 3. Render Khung ảnh qua Pillow
-    frame_np = create_video_frame(script_data, width=1080, height=1920)
+    frame_np = create_video_frame(script_data, width=540, height=960)
     
     if status_callback:
         status_callback("4/4", f"⚡ Đang render xuất file MP4 HD...")
 
-    # 4. Ghép ảnh + âm thanh thành Video MP4
     video_clip = ImageClip(frame_np).with_duration(duration)
     video_clip = video_clip.with_audio(audio_clip)
     
     print(f"[Video Renderer] Dang render video MP4 ({duration:.1f}s)...")
     video_clip.write_videofile(
         output_mp4_path,
-        fps=24,
+        fps=18,
         codec="libx264",
         audio_codec="aac",
+        preset="ultrafast",
+        ffmpeg_params=["-crf", "28"],
         logger=None
     )
     
-    # Dọn dẹp tài nguyên
     audio_clip.close()
     video_clip.close()
     if os.path.exists(temp_audio):
         os.remove(temp_audio)
         
+    gc.collect()
     print(f"[Hoan thanh] Da tao xong video: {output_mp4_path}")
     return output_mp4_path
 
