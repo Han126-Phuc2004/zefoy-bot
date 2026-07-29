@@ -5,10 +5,18 @@ import base64
 import re
 from curl_cffi import requests
 from ai_utils import ask_text_to_openrouter
+from proxy_manager import get_working_proxy
 
 def run_zefoy_curl(tiktok_url, service_id="4", duration_minutes=60):
     print(f"⚡ [SIÊU BOT CURL-CFFI] Khởi tạo kết nối siêu tốc tới Zefoy (Tốc độ x5)...")
+    
+    proxy = get_working_proxy(max_checks=15)
     session = requests.Session(impersonate="chrome120")
+    if proxy:
+        proxy_url = f"http://{proxy}"
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+        print(f"[+] [Proxy Auto-Rotate] Đã kết nối Zefoy qua Free Proxy: {proxy}")
+
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",

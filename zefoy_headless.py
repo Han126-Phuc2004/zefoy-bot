@@ -15,6 +15,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from ai_utils import ask_text_to_openrouter
+from proxy_manager import get_working_proxy
 
 # ─────────────────────────────────────────────────────────────
 #  TELEGRAM NOTIFICATION HELPER
@@ -55,7 +56,7 @@ SERVICES = {
     "8": {"name": "Repost",          "css": ".t-repost-button"},
 }
 
-def create_driver():
+def create_driver(proxy=None):
     """Tạo Chrome driver chạy headless (không cần màn hình)."""
     opts = Options()
     opts.add_argument("--headless=new")
@@ -68,6 +69,11 @@ def create_driver():
     opts.add_argument("--disable-infobars")
     opts.add_argument("--lang=en-US")
     opts.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    if proxy:
+        opts.add_argument(f"--proxy-server=http://{proxy}")
+        print(f"[+] [Proxy Auto-Rotate] Selenium Chrome sử dụng Free Proxy: {proxy}")
+
     opts.add_experimental_option("prefs", {
         "profile.default_content_setting_values.notifications": 2
     })
@@ -309,7 +315,8 @@ def run_bot(video_url: str, service: dict):
 
     send_telegram_notification(f"🎬 *Bắt đầu chạy Zefoy Bot*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {video_url}")
 
-    driver = create_driver()
+    proxy = get_working_proxy(max_checks=15)
+    driver = create_driver(proxy=proxy)
     try:
         print("[+] Đang mở trang Zefoy.com...")
         driver.get("https://zefoy.com/")
@@ -379,13 +386,11 @@ def run_bot(video_url: str, service: dict):
 
                 wait_sec = check_remaining_time(driver)
                 if wait_sec > 0:
-                    handle_timer_cooldown(wait_sec, service_name=service_name, send_telegram=True)
+                    handle_timer_cooldown(wait_sec, service_name=service_name, send_telegram=False)
                 elif submit_btn:
                     count_text = submit_btn.text.strip()
                     total_submits += 1
-                    msg = f"🎉 *[Tăng thành công lần {total_submits}]*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {video_url}\n📊 Số lượng hiển thị: *{count_text}*"
-                    print(f"[Cycle {cycle}] Submit! Số lượng: {count_text}")
-                    send_telegram_notification(msg)
+                    print(f"[Cycle {cycle}] Submit! Số lượng: {count_text} (lần {total_submits})")
                     submit_btn.click()
                     time.sleep(5)
                 elif search_btn:
