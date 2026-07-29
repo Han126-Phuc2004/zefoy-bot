@@ -332,7 +332,10 @@ def run_bot(video_url: str, service: dict):
                 solve_captcha_with_ai(driver)
 
         print(f"[*] Đang chọn dịch vụ '{service_name}'...")
+        select_retries = 0
+        max_select_retries = 15
         while True:
+            select_retries += 1
             handle_alerts(driver)
             if is_captcha_present(driver):
                 solve_captcha_with_ai(driver)
@@ -352,7 +355,13 @@ def run_bot(video_url: str, service: dict):
                 ensure_input_filled(driver, video_url)
                 break
             else:
-                select_service(driver, service_css, service_name)
+                success_click = select_service(driver, service_css, service_name)
+                if not success_click and select_retries >= max_select_retries:
+                    err_msg = f"⚠️ *[Zefoy Alert]* Dịch vụ `{service_name}` hiện đang *BỊ KHÓA / BẢO TRÌ* trên Zefoy.com!\n🔗 Link: {video_url}"
+                    print(f"[!] {err_msg}")
+                    send_telegram_notification(err_msg)
+                    return
+
             time.sleep(2)
 
         print("[+] Bắt đầu vòng lặp tự động...")
@@ -386,11 +395,13 @@ def run_bot(video_url: str, service: dict):
 
                 wait_sec = check_remaining_time(driver)
                 if wait_sec > 0:
-                    handle_timer_cooldown(wait_sec, service_name=service_name, send_telegram=False)
+                    handle_timer_cooldown(wait_sec, service_name=service_name, send_telegram=True)
                 elif submit_btn:
                     count_text = submit_btn.text.strip()
                     total_submits += 1
-                    print(f"[Cycle {cycle}] Submit! Số lượng: {count_text} (lần {total_submits})")
+                    msg_submit = f"🎉 *[Zefoy Buff Thành Công!]*\n🔹 Dịch vụ: `{service_name}`\n🔢 Kết quả: *{count_text}*\n📊 Lượt buff thứ: *#{total_submits}*\n🔗 Link: {video_url}"
+                    print(f"[Cycle {cycle}] {msg_submit}")
+                    send_telegram_notification(msg_submit)
                     submit_btn.click()
                     time.sleep(5)
                 elif search_btn:
@@ -408,7 +419,7 @@ def run_bot(video_url: str, service: dict):
                 print(f"[Cycle {cycle}] Lỗi: {e}")
                 time.sleep(5)
     finally:
-        send_telegram_notification(f"🛑 *Zefoy Bot đã kết thúc tác vụ.*\n🔗 Link: {video_url}")
+        send_telegram_notification(f"🛑 *Zefoy Bot đã kết thúc tác vụ.*\n🔹 Dịch vụ: `{service_name}`\n🔗 Link: {video_url}")
         driver.quit()
         print("[+] Đã đóng browser.")
 
