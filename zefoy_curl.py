@@ -15,18 +15,15 @@ def run_zefoy_curl(tiktok_url, service_id="4", duration_minutes=60):
         "Accept-Language": "en-US,en;q=0.9",
     })
 
-    start_time = time.time()
-    end_time = start_time + (duration_minutes * 60)
-    
     try:
         res = session.get("https://zefoy.com", timeout=10)
         if res.status_code != 200:
-            print(f"[!] Không thể truy cập Zefoy. Status: {res.status_code}")
+            print(f"[!] Không thể truy cập Zefoy qua HTTP. Status: {res.status_code}")
             return False
             
         print("[+] Kết nối Zefoy qua curl_cffi thành công (200 OK)! PHPSESSID:", session.cookies.get("PHPSESSID"))
 
-        # Tìm captcha encoded
+        # Kiểm tra xem Zefoy có load CAPTCHA qua JavaScript hay không
         m_encoded = re.search(r'name="captcha_encoded"\s+value="(.*?)"', res.text)
         captcha_encoded = m_encoded.group(1) if m_encoded else ""
 
@@ -37,31 +34,28 @@ def run_zefoy_curl(tiktok_url, service_id="4", duration_minutes=60):
 
         if img_match:
             base64_data = img_match.group(1)
-            # Lưu tạm ảnh captcha
             img_bytes = base64.b64decode(base64_data.split(",")[1])
             with open("captcha_curl.png", "wb") as f:
                 f.write(img_bytes)
 
-            print("[*] Đã tải ảnh CAPTCHA thành công qua curl_cffi. Đang gửi cho AI Vision...")
+            print("[*] Đã tải ảnh CAPTCHA qua curl_cffi. Đang gửi cho AI Vision...")
             captcha_text = ask_text_to_openrouter("captcha_curl.png")
             print(f"[+] AI nhận diện CAPTCHA: '{captcha_text}'")
 
-            # Submit CAPTCHA qua POST
             post_data = {
                 "captchalogin": captcha_text,
                 "captcha_encoded": captcha_encoded
             }
             res_post = session.post("https://zefoy.com/", data=post_data, timeout=10)
             print(f"[+] Đã Submit CAPTCHA. Status: {res_post.status_code}")
+            return True
         else:
-            print("[*] Trang không yêu cầu CAPTCHA hoặc captcha_img được load qua JS.")
+            print("[*] Zefoy yêu cầu JavaScript render DOM động để tạo CAPTCHA key. Chuyển sang Selenium Headless...")
+            return False
 
     except Exception as e:
-        print(f"[!] Lỗi Siêu Bot Curl-Cffi: {e}")
-        print("[*] Tự động fallback sang Selenium Headless...")
+        print(f"[!] Curl-Cffi notice: {e}")
         return False
-
-    return True
 
 if __name__ == "__main__":
     url = sys.argv[1] if len(sys.argv) > 1 else os.getenv("ZEFOY_URL", "https://vt.tiktok.com/ZSxxxxxx/")
@@ -70,6 +64,6 @@ if __name__ == "__main__":
 
     success = run_zefoy_curl(url, service_id=service, duration_minutes=duration)
     if not success:
-        # Fallback sang zefoy_headless.py mặc định
+        print("[⚡] Tự động kích hoạt Selenium Headless Driver để cày 120 phút...")
         import subprocess
-        subprocess.run([sys.executable, "zefoy_headless.py", url, service, str(duration)])
+        subprocess.run([sys.executable, "zefoy_headless.py", "--service", service, "--url", url, "--duration", str(duration)])
