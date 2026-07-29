@@ -77,12 +77,75 @@ async def _async_tts(text: str, output_path: str, voice: str):
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(output_path)
 
+def generate_everai_tts(text: str, output_path: str, voice_code: str = "vi_female_kieunhi_mn") -> bool:
+    """Tạo giọng đọc AI từ EverAI API (https://www.everai.vn/api/v1/tts)."""
+    api_key = os.getenv("EVERAI_API_KEY", "").strip()
+    if not api_key:
+        return False
+        
+    print(f"[EverAI TTS] Dang tao giong doc qua EverAI API ({voice_code})...")
+    url = "https://www.everai.vn/api/v1/tts"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "text": text,
+        "voice_code": voice_code,
+        "audio_type": "mp3",
+        "speed_rate": 1.0,
+        "pitch_rate": 1.0
+    }
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        if res.status_code == 200:
+            if res.headers.get("content-type", "").startswith("audio/"):
+                with open(output_path, "wb") as f:
+                    f.write(res.content)
+                print(f"[EverAI TTS] Da luu file am thanh EverAI truc tiep: {output_path}")
+                return True
+
+            data = res.json()
+            audio_url = data.get("audio_link") or data.get("result", {}).get("audio_link")
+            request_id = data.get("result", {}).get("request_id") or data.get("request_id")
+            
+            if not audio_url and request_id:
+                for _ in range(12):
+                    time.sleep(2)
+                    poll_res = requests.get(f"https://www.everai.vn/api/v1/tts/{request_id}", headers=headers, timeout=10)
+                    if poll_res.status_code == 200:
+                        poll_data = poll_res.json()
+                        audio_url = poll_data.get("result", {}).get("audio_link") or poll_data.get("audio_link")
+                        if audio_url:
+                            break
+                            
+            if audio_url:
+                audio_res = requests.get(audio_url, timeout=15)
+                if audio_res.status_code == 200:
+                    with open(output_path, "wb") as f:
+                        f.write(audio_res.content)
+                    print(f"[EverAI TTS] Da luu file am thanh EverAI: {output_path}")
+                    return True
+        print(f"[!] EverAI API notice status: {res.status_code}")
+    except Exception as e:
+        print(f"[!] Lỗi EverAI TTS: {e}")
+    return False
+
 def generate_voiceover(text: str, output_audio_path: str, voice: str = "vi-VN-HoaiMyNeural") -> bool:
     """Tự động chuyển kịch bản văn bản thành giọng đọc AI Tiếng Việt truyền cảm chuẩn HD."""
+    # 1. Thử EverAI API nếu có cấu hình EVERAI_API_KEY
+    if os.getenv("EVERAI_API_KEY"):
+        everai_voice = os.getenv("EVERAI_VOICE_CODE", "vi_female_kieunhi_mn")
+        success = generate_everai_tts(text, output_audio_path, voice_code=everai_voice)
+        if success:
+            return True
+        print("[!] Chuyen sang Edge-TTS...")
+
+    # 2. Dự phòng Edge-TTS Microsoft Neural Voice
     try:
-        print(f"[AI Voice] Dang sinh giong doc AI ({voice})...")
+        print(f"[AI Voice] Dang sinh giong doc Edge-TTS ({voice})...")
         asyncio.run(_async_tts(text, output_audio_path, voice))
-        print(f"[AI Voice] Da luu file am thanh: {output_audio_path}")
+        print(f"[AI Voice] Da luu file am thanh Edge-TTS: {output_audio_path}")
         return True
     except Exception as e:
         print(f"[!] Lỗi sinh giọng đọc TTS: {e}")
