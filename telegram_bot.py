@@ -83,27 +83,6 @@ def parse_duration_and_url(text: str) -> tuple[int, str]:
                 break
     return duration, url
 
-def parse_goal_views(text: str) -> int:
-    """Đổi chuỗi như 100k, 1M, 50000 thành số nguyên."""
-    if not text:
-        return 0
-    clean = text.strip().lower().replace(',', '').replace('.', '')
-    if clean.endswith('k'):
-        try:
-            return int(float(clean[:-1]) * 1000)
-        except Exception:
-            return 0
-    elif clean.endswith('m'):
-        try:
-            return int(float(clean[:-1]) * 1000000)
-        except Exception:
-            return 0
-    else:
-        try:
-            return int(clean)
-        except Exception:
-            return 0
-
 def safe_send_message(chat_id, text, parse_mode="HTML", reply_to_message_id=None):
     """Gửi tin nhắn Telegram an toàn, tự động fallback về plain text nếu bị lỗi format."""
     try:
@@ -181,7 +160,6 @@ Bạn có thể gửi <b>trực tiếp Link TikTok</b> hoặc gửi <b>file .txt
 🔹 <code>/favorites [thời_gian_phút] &lt;link&gt;</code> - Tăng Yêu thích
 🔹 <code>/combo [thời_gian_phút] &lt;link&gt;</code> - Cày Combo <b>Views + Favorites</b> song song!
 🔹 <code>/batch &lt;link1&gt; &lt;link2&gt; ...</code> - Cày hàng loạt nhiều link
-🔹 <code>/goal &lt;mục_tiêu_view&gt; &lt;link&gt;</code> - Cày theo mục tiêu (Ví dụ: <code>/goal 100k https://...</code>)
 
 📊 <b>QUẢN LÝ & THỐNG KÊ:</b>
 ⚡ <code>/status</code> - Xem danh sách bot đang cày trên GitHub
@@ -641,75 +619,6 @@ def handle_target(message):
     for url in target_urls:
         trigger_github_action(message.chat.id, "4", url, duration_minutes=duration)
 
-@bot.message_handler(commands=['goal', 'muctieu'])
-def handle_goal(message):
-    if not is_user_allowed(message.from_user):
-        safe_send_message(message.chat.id, "⛔ <b>Bạn không có quyền sử dụng Bot này.</b>", reply_to_message_id=message.message_id)
-        return
-
-    text = message.text.strip()
-    parts = text.split()
-    
-    if len(parts) < 2:
-        safe_send_message(
-            message.chat.id, 
-            "🎯 <b>CÚ PHÁP LỆNH /goal (CÀY THEO MỤC TIÊU VIEW):</b>\n\n"
-            "<code>/goal &lt;số_views_mục_tiêu&gt; [thời_gian_phút] &lt;link_tiktok&gt;</code>\n\n"
-            "<b>Ví dụ:</b>\n"
-            "• <code>/goal 100k https://vt.tiktok.com/ZS48b1NEy/</code> (Cày mục tiêu 100,000 Views)\n"
-            "• <code>/goal 500k 45 https://vt.tiktok.com/ZS48b1NEy/</code> (Cày 500,000 Views, 45p/worker)\n"
-            "• <code>/goal 1M https://vt.tiktok.com/ZS48b1NEy/</code> (Cày 1 Triệu Views)\n\n"
-            "💡 <i>Hệ thống sẽ tự động phân bổ số lượng Máy chủ Matrix Workers gối đầu để đạt mục tiêu nhanh nhất!</i>", 
-            reply_to_message_id=message.message_id
-        )
-        return
-
-    duration, tiktok_url = parse_duration_and_url(text)
-    
-    target_views = 0
-    for p in parts[1:]:
-        v = parse_goal_views(p)
-        if v > 0:
-            target_views = v
-            break
-
-    if not tiktok_url or target_views <= 0:
-        safe_send_message(
-            message.chat.id, 
-            "⚠️ <b>Lỗi cú pháp:</b> Vui lòng nhập số views mục tiêu hợp lệ và đường link TikTok!\n"
-            "Ví dụ: <code>/goal 100k https://vt.tiktok.com/ZS48b1NEy/</code>", 
-            reply_to_message_id=message.message_id
-        )
-        return
-
-    est_runs = max(1, min(10, (target_views + 59999) // 60000))
-    est_time = est_runs * (duration if duration else 30)
-
-    safe_send_message(
-        message.chat.id, 
-        f"🎯 <b>ĐÃ CÀI ĐẶT MỤC TIÊU CÀY VIEW (GOAL TARGET)!</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔗 <b>Link Target:</b> {html.escape(tiktok_url)}\n"
-        f"🏆 <b>Mục tiêu View:</b> <code>{target_views:,} Views</code>\n"
-        f"⚡ <b>Máy chủ phân bổ:</b> <code>{est_runs} Tiến trình Workflow ({est_runs * 4} Matrix Workers)</code>\n"
-        f"⏱ <b>Thời gian ước tính:</b> ~<code>{est_time} phút</code>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🚀 Đang kích hoạt tự động dàn máy chủ GitHub Actions cày gối đầu...", 
-        reply_to_message_id=message.message_id
-    )
-
-    count = 0
-    for _ in range(est_runs):
-        if trigger_github_action(message.chat.id, "4", tiktok_url, duration_minutes=duration):
-            count += 1
-        time.sleep(1.5)
-
-    safe_send_message(
-        message.chat.id, 
-        f"✅ <b>Đã kích hoạt thành công {count}/{est_runs} luồng cày mục tiêu ({target_views:,} Views) trên GitHub Actions!</b>", 
-        reply_to_message_id=message.message_id
-    )
-
 @bot.message_handler(commands=['schedule', 'datlich'])
 def handle_schedule(message):
     if not is_user_allowed(message.from_user):
@@ -873,7 +782,6 @@ def setup_bot_commands():
             telebot.types.BotCommand('favorites', 'Tăng Yêu thích Favorites'),
             telebot.types.BotCommand('combo', 'Cày Combo Views + Favorites song song'),
             telebot.types.BotCommand('batch', 'Cày hàng loạt nhiều link TikTok'),
-            telebot.types.BotCommand('goal', 'Cày theo mục tiêu Views (Ví dụ: /goal 100k link)'),
             telebot.types.BotCommand('target', 'Cày tự động theo @username kênh TikTok'),
             telebot.types.BotCommand('schedule', 'Đặt lịch cày tự động lặp lại'),
             telebot.types.BotCommand('analytics', 'Báo cáo đồ thị & tổng view cày được'),
