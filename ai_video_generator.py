@@ -177,48 +177,48 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: Ima
 
 import gc
 
-def create_video_frame(script_data: dict, width: int = 540, height: int = 960) -> np.ndarray:
-    """Vẽ 1 khung ảnh đẹp chuẩn HD 9:16 dùng Pillow (Nền Dark Gradient + Card Phụ Đề + Title Vàng). Optimised for 512MB RAM."""
+def create_video_frame(script_data: dict, width: int = 720, height: int = 1280) -> np.ndarray:
+    """Vẽ 1 khung ảnh đẹp chuẩn CRISP HD 720p 9:16 dùng Pillow (Nền Dark Slate + Card Phụ Đề + Title Vàng Gold)."""
     img = Image.new("RGB", (width, height), color=(15, 23, 42))
     draw = ImageDraw.Draw(img)
     
     try:
-        font_title = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", 30)
-        font_body = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 22)
+        font_title = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", 40)
+        font_body = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 30)
     except Exception:
         font_title = ImageFont.load_default()
         font_body = ImageFont.load_default()
         
     title_text = script_data['title'].upper()
-    title_lines = wrap_text(title_text, font_title, width - 80, draw)
+    title_lines = wrap_text(title_text, font_title, width - 110, draw)
     
-    y_cursor = 110
+    y_cursor = 150
     card_bg = (30, 41, 59)
-    draw.rounded_rectangle([30, y_cursor - 10, width - 30, y_cursor + len(title_lines) * 40 + 10], radius=10, fill=card_bg, outline=(234, 179, 8), width=2)
+    draw.rounded_rectangle([40, y_cursor - 15, width - 40, y_cursor + len(title_lines) * 55 + 15], radius=15, fill=card_bg, outline=(234, 179, 8), width=3)
     
     for line in title_lines:
         bbox = draw.textbbox((0, 0), line, font=font_title)
         w = bbox[2] - bbox[0]
         x = (width - w) // 2
         draw.text((x, y_cursor), line, font=font_title, fill=(234, 179, 8))
-        y_cursor += 40
+        y_cursor += 55
         
-    y_cursor += 40
+    y_cursor += 50
     body_lines = []
-    body_lines.extend(wrap_text(f"🔥 {script_data['hook']}", font_body, width - 100, draw))
+    body_lines.extend(wrap_text(f"🔥 {script_data['hook']}", font_body, width - 140, draw))
     body_lines.append("")
     for i, fact in enumerate(script_data['facts'], 1):
-        body_lines.extend(wrap_text(f"✨ Điều {i}: {fact}", font_body, width - 100, draw))
+        body_lines.extend(wrap_text(f"✨ Điều {i}: {fact}", font_body, width - 140, draw))
         body_lines.append("")
-    body_lines.extend(wrap_text(f"👉 {script_data['call_to_action']}", font_body, width - 100, draw))
+    body_lines.extend(wrap_text(f"👉 {script_data['call_to_action']}", font_body, width - 140, draw))
     
-    card_top = y_cursor - 15
-    card_bottom = min(height - 75, y_cursor + len(body_lines) * 28 + 20)
-    draw.rounded_rectangle([35, card_top, width - 35, card_bottom], radius=12, fill=(30, 41, 59))
+    card_top = y_cursor - 20
+    card_bottom = min(height - 100, y_cursor + len(body_lines) * 38 + 30)
+    draw.rounded_rectangle([45, card_top, width - 45, card_bottom], radius=18, fill=(30, 41, 59))
     
     for line in body_lines:
         if not line:
-            y_cursor += 12
+            y_cursor += 16
             continue
         bbox = draw.textbbox((0, 0), line, font=font_body)
         w = bbox[2] - bbox[0]
@@ -229,13 +229,13 @@ def create_video_frame(script_data: dict, width: int = 540, height: int = 960) -
         elif "👉" in line:
             fill_color = (74, 222, 128)
         draw.text((x, y_cursor), line, font=font_body, fill=fill_color)
-        y_cursor += 28
+        y_cursor += 38
         
     return np.array(img)
 
 def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", status_callback=None) -> str:
-    """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu tốc (RAM Friendly)."""
-    print(f"\n[AI Video Generator] Bat dau tu dong tao video cho chu de: '{topic}'...")
+    """Hàm trung tâm: Viết kịch bản ➔ Sinh giọng đọc ➔ Xuất file MP4 siêu sắc nét HD 720p."""
+    print(f"\n[AI Video Generator] Bat dau tu dong tao video CRISP HD cho chu de: '{topic}'...")
     
     if status_callback:
         status_callback("1/4", "🧠 Đang viết kịch bản AI...")
@@ -257,24 +257,24 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
     duration = audio_clip.duration
     
     if status_callback:
-        status_callback("3/4", f"🎨 Đang vẽ khung hình HD 9:16 ({duration:.1f}s)...")
+        status_callback("3/4", f"🎨 Đang vẽ khung hình Crisp HD 720p ({duration:.1f}s)...")
 
-    frame_np = create_video_frame(script_data, width=540, height=960)
+    frame_np = create_video_frame(script_data, width=720, height=1280)
     
     if status_callback:
-        status_callback("4/4", f"⚡ Đang render xuất file MP4 HD...")
+        status_callback("4/4", f"⚡ Đang render xuất file MP4 HD sắc nét...")
 
     video_clip = ImageClip(frame_np).with_duration(duration)
     video_clip = video_clip.with_audio(audio_clip)
     
-    print(f"[Video Renderer] Dang render video MP4 ({duration:.1f}s)...")
+    print(f"[Video Renderer] Dang render video CRISP HD MP4 ({duration:.1f}s)...")
     video_clip.write_videofile(
         output_mp4_path,
-        fps=18,
+        fps=24,
         codec="libx264",
         audio_codec="aac",
-        preset="ultrafast",
-        ffmpeg_params=["-crf", "28"],
+        preset="medium",
+        ffmpeg_params=["-crf", "20"],
         logger=None
     )
     
@@ -284,7 +284,7 @@ def render_tiktok_video(topic: str, output_mp4_path: str = "output_tiktok.mp4", 
         os.remove(temp_audio)
         
     gc.collect()
-    print(f"[Hoan thanh] Da tao xong video: {output_mp4_path}")
+    print(f"[Hoan thanh] Da tao xong video CRISP HD: {output_mp4_path}")
     return output_mp4_path
 
 if __name__ == "__main__":
